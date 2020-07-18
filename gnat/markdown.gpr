@@ -1,0 +1,34 @@
+--  SPDX-FileCopyrightText: 2020 Max Reznik <reznikmm@gmail.com>
+--
+--  SPDX-License-Identifier: MIT
+----------------------------------------------------------------
+
+with "matreshka_league";
+
+project Markdown is
+
+   Version := "0.1.0";
+
+   for Source_Dirs use ("../sources/md");
+   for Object_Dir use "../.objs";
+   for Library_Kind use "dynamic";
+   for Library_Name use "markdownada";
+   for Library_Dir use "../.libs";
+   for Library_ALI_Dir use "../.libs/markdownada";
+   for Library_Version use "libmarkdownada.so." & Version;
+
+   package Compiler is
+      for Default_Switches ("ada") use
+        ("-gnat12", "-gnatW8", "-g", "-gnatVa", "-gnatwea", "-gnaty",
+         "-gnata");
+   end Compiler;
+
+   package Binder is
+      for Switches ("ada") use ("-E", "-W8");
+   end Binder;
+
+   package Pretty_Printer is
+      for Default_Switches ("ada") use ("--par-threshold=1");
+   end Pretty_Printer;
+
+end Markdown;

@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2020 Max Reznik <reznikmm@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
+on: [push]
+name: Build
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build and deploy RPM
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: markdown
+      - name: REUSE Compliance Check
+        uses: fsfe/reuse-action@v1.1
+        with:
+          args: --root markdown lint
+      - uses: reznikmm/fedora-ada-action@v2
+        with:
+          spec: markdown/packages/markdown-ada.spec
+      - uses: reznikmm/upload-bintray-docker-action@v2
+        with:
+          username: reznikmm
+          repository: matreshka
+          package: markdown-ada
+          version: head-fc32
+          sourcePath: x86_64/*
+          override: 1
+          apiKey: ${{secrets.BINTRAY_API_KEY}}
