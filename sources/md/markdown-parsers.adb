@@ -8,12 +8,39 @@ package body Markdown.Parsers is
 
    type New_Block_Access is access all Markdown.Blocks.Block'Class;
 
-   procedure Create_Blocks
-     (Self    : in out Parser'Class;
-      Line    : League.Strings.Universal_String;
-      From    : in out Positive;
-      Column  : in out Positive;
-      Created : out Block_Vectors.Vector);
+   procedure Create_Block
+     (Self       : in out Parser'Class;
+      Line       : in out Blocks.Text_Line;
+      Tag        : Ada.Tags.Tag;
+      Containers : in out Container_Vectors.Vector;
+      Leaf       : out Blocks.Block_Access);
+
+   procedure Find_Block_Start
+     (Self : Parser'Class;
+      Line : Blocks.Text_Line;
+      Tag  : out Ada.Tags.Tag;
+      Int  : out Boolean);
+
+   ----------------------
+   -- Find_Block_Start --
+   ----------------------
+
+   procedure Find_Block_Start
+     (Self : Parser'Class;
+      Line : Blocks.Text_Line;
+      Tag  : out Ada.Tags.Tag;
+      Int  : out Boolean)
+   is
+      use type Ada.Tags.Tag;
+   begin
+      Tag := Ada.Tags.No_Tag;
+
+      for Filter of Self.Filters loop
+         Filter (Line, Tag, Int);
+
+         exit when Tag /= Ada.Tags.No_Tag;
+      end loop;
+   end Find_Block_Start;
 
    -----------------
    -- Append_Line --
@@ -21,18 +48,19 @@ package body Markdown.Parsers is
 
    procedure Append_Line
      (Self : in out Parser'Class;
-      Line : League.Strings.Universal_String)
+      Text : League.Strings.Universal_String)
    is
-      procedure Close_Blocks (Open : in out Block_Vectors.Vector);
+      procedure Close_Blocks (Open : in out Container_Vectors.Vector);
 
       ------------------
       -- Close_Blocks --
       ------------------
 
-      procedure Close_Blocks (Open : in out Block_Vectors.Vector) is
+      procedure Close_Blocks (Open : in out Container_Vectors.Vector) is
       begin
          if Open.Is_Empty and not Self.Open.Is_Empty then
-            Self.Blocks.Append (Self.Open.First_Element);
+            Self.Blocks.Append
+              (Markdown.Blocks.Block_Access (Self.Open.First_Element));
          end if;
 --           for J in reverse Open.Last_Index + 1 .. Self.Open.Last_Index loop
 --              --  Close block
@@ -42,92 +70,105 @@ package body Markdown.Parsers is
          Self.Open.Move (Source => Open);
       end Close_Blocks;
 
-      Open    : Block_Vectors.Vector;
-      Created : Block_Vectors.Vector;
-      From    : Positive := 1;
-      Column  : Positive := 1;
-      Match   : Markdown.Continuation_Kind := Markdown.No_Match;
+      use type Ada.Tags.Tag;
+
+      Tag    : Ada.Tags.Tag;
+      New_Containers : Container_Vectors.Vector;
+      New_Leaf       : Blocks.Block_Access;
+      Int_Para       : Boolean;
+      Line    : Markdown.Blocks.Text_Line := (Text, 1);
+      Open    : Container_Vectors.Vector;
+      Match   : Boolean;
    begin
       for Block of Self.Open loop
-         Block.Consume_Continuation_Markers (Line, From, Column, Match);
+         Block.Consume_Continuation_Markers (Line, Match);
 
-         exit when Match /= Markdown.Match;
+         exit when not Match;
 
          Open.Append (Block);
       end loop;
 
-      if Match /= Markdown.Consumed then
-         Self.Create_Blocks (Line, From, Column, Created);
+      Self.Find_Block_Start (Line, Tag, Int_Para);
+
+      if Self.Open_Leaf.Is_Assigned then
+         Match := False;
+         Self.Open_Leaf.Append_Line (Line, Int_Para, Match);
+
+         if Match then
+            Line.Line.Clear;
+            Tag := Ada.Tags.No_Tag;
+         else
+            Self.Open_Leaf := null;
+         end if;
       end if;
 
-      if not Created.Is_Empty then
+      if not Line.Line.Is_Empty then
+         while Tag /= Ada.Tags.No_Tag and not New_Leaf.Is_Assigned loop
+            Self.Create_Block (Line, Tag, New_Containers, New_Leaf);
+            Self.Find_Block_Start (Line, Tag, Int_Para);
+         end loop;
+         pragma Assert (Line.Line.Is_Empty);
+      end if;
+
+      if New_Leaf.Is_Assigned then
+         Self.Open_Leaf := New_Leaf;
          Close_Blocks (Open);
 
-         if not Self.Open.Is_Empty then
-            Self.Open.Last_Element.Append_Child (Created.First_Element);
+         if New_Containers.Is_Empty then
+            if Self.Open.Is_Empty then
+               Self.Blocks.Append (New_Leaf);
+            else
+               Self.Open.Last_Element.Append_Child (New_Leaf);
+            end if;
+         elsif not Self.Open.Is_Empty then
+            Self.Open.Last_Element.Append_Child
+              (Markdown.Blocks.Block_Access (New_Containers.First_Element));
          end if;
 
-         Self.Open.Append (Created);
+         Self.Open.Append (New_Containers);
       end if;
 
-      if From <= Line.Length then
-         Self.Open.Last_Element.Append_Line (Line, From, Column);
-      elsif Created.Is_Empty then
+      if not New_Leaf.Is_Assigned then
          Close_Blocks (Open);
       end if;
    end Append_Line;
 
-   -------------------
-   -- Create_Blocks --
-   -------------------
+   ------------------
+   -- Create_Block --
+   ------------------
 
-   procedure Create_Blocks
-     (Self    : in out Parser'Class;
-      Line    : League.Strings.Universal_String;
-      From    : in out Positive;
-      Column  : in out Positive;
-      Created : out Block_Vectors.Vector)
+   procedure Create_Block
+     (Self       : in out Parser'Class;
+      Line       : in out Blocks.Text_Line;
+      Tag        : Ada.Tags.Tag;
+      Containers : in out Container_Vectors.Vector;
+      Leaf       : out Blocks.Block_Access)
    is
+      pragma Unreferenced (Self);
       function Constructor is new Ada.Tags.Generic_Dispatching_Constructor
         (Markdown.Blocks.Block,
          Markdown.Blocks.Text_Line,
          Markdown.Blocks.Create);
 
-      Again : Boolean := True;
+      Object : New_Block_Access;
+      Block  : Markdown.Blocks.Block_Access;
+      Text   : aliased Markdown.Blocks.Text_Line := Line;
    begin
-      while Again and From <= Line.Length loop
-         Again := False;
+      Object := new Markdown.Blocks.Block'Class'
+        (Constructor (Tag, Text'Access));
+      Block := Markdown.Blocks.Block_Access (Object);
+      Line := Text;
 
-         for Filter of Self.Filters loop
-            declare
-               use type Ada.Tags.Tag;
+      if not Containers.Is_Empty then
+         Containers.Last_Element.Append_Child (Block);
+      end if;
 
-               Tag    : Ada.Tags.Tag := Ada.Tags.No_Tag;
-               Object : New_Block_Access;
-               Block  : Markdown.Blocks.Block_Access;
-               Text   : aliased Markdown.Blocks.Text_Line :=
-                 (Line, From, Column);
-            begin
-               Filter (Line, From, Column, Tag);
-
-               if Tag /= Ada.Tags.No_Tag then
-                  Object := new Markdown.Blocks.Block'Class'
-                    (Constructor (Tag, Text'Access));
-                  Block := Markdown.Blocks.Block_Access (Object);
-
-                  if not Created.Is_Empty then
-                     Created.Last_Element.Append_Child (Block);
-                  end if;
-
-                  Created.Append (Block);
-
-                  Again := Block.Is_Container;
-                  exit;
-               end if;
-            end;
-         end loop;
-      end loop;
-   end Create_Blocks;
+      if Block.Is_Container then
+         Containers.Append (Markdown.Blocks.Container_Block_Access (Block));
+      else
+         Leaf := Block;
+      end if;
+   end Create_Block;
 
    --------------
    -- Register --

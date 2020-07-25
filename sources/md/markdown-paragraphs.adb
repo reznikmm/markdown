@@ -7,51 +7,22 @@ with Markdown.Visitors;
 
 package body Markdown.Paragraphs is
 
-   ------------------
-   -- Append_Child --
-   ------------------
-
-   overriding procedure Append_Child
-     (Self  : in out Paragraph;
-      Child : not null Markdown.Blocks.Block_Access) is
-   begin
-      raise Program_Error;
-   end Append_Child;
-
    -----------------
    -- Append_Line --
    -----------------
 
    overriding procedure Append_Line
-     (Self   : in out Paragraph;
-      Line   : League.Strings.Universal_String;
-      From   : Positive;
-      Column : Positive)
-   is
-      pragma Unreferenced (Column);
+     (Self : in out Paragraph;
+      Line : Markdown.Blocks.Text_Line;
+      CIP  : Can_Interrupt_Paragraph;
+      Ok   : in out Boolean) is
    begin
-      Self.Lines.Append (Line.Tail_From (From));
-   end Append_Line;
+      Ok := not Line.Line.Is_Empty and not CIP;
 
-   ----------------------------------
-   -- Consume_Continuation_Markers --
-   ----------------------------------
-
-   overriding procedure Consume_Continuation_Markers
-     (Self   : Paragraph;
-      Line   : League.Strings.Universal_String;
-      From   : in out Positive;
-      Column : in out Positive;
-      Match  : out Continuation_Kind)
-   is
-      pragma Unreferenced (Self, Column);
-   begin
-      if From <= Line.Length then
-         Match := Consumed;
-      else
-         Match := No_Match;
+      if Ok then
+         Self.Lines.Append (Line.Line);
       end if;
-   end Consume_Continuation_Markers;
+   end Append_Line;
 
    ------------
    -- Create --
@@ -60,9 +31,13 @@ package body Markdown.Paragraphs is
    overriding function Create
      (Line : not null access Markdown.Blocks.Text_Line)
       return Paragraph is
-      pragma Unreferenced (Line);
    begin
-      return Result : Paragraph;
+      pragma Assert (not Line.Line.Is_Empty);
+
+      return Result : Paragraph do
+         Result.Lines.Append (Line.Line);
+         Line.Line.Clear;
+      end return;
    end Create;
 
    ------------
@@ -70,15 +45,13 @@ package body Markdown.Paragraphs is
    ------------
 
    procedure Filter
-     (Line   : League.Strings.Universal_String;
-      From   : in out Positive;
-      Column : in out Positive;
-      Tag    : in out Ada.Tags.Tag) is
-      pragma Unreferenced (Column);
+     (Line : Markdown.Blocks.Text_Line;
+      Tag  : in out Ada.Tags.Tag;
+      CIP  : out Can_Interrupt_Paragraph) is
    begin
-      if From <= Line.Length then
-         From := From + 0;  --  To avoid a compiler warning
+      if not Line.Line.Is_Empty then
          Tag := Paragraph'Tag;
+         CIP := False;
       end if;
    end Filter;
 
@@ -102,4 +75,5 @@ package body Markdown.Paragraphs is
    begin
       Visitor.Paragraph (Self);
    end Visit;
+
 end Markdown.Paragraphs;

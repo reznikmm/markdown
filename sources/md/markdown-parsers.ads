@@ -17,13 +17,12 @@ package Markdown.Parsers is
 
    procedure Append_Line
      (Self : in out Parser'Class;
-      Line : League.Strings.Universal_String);
+      Text : League.Strings.Universal_String);
 
    type Block_Start_Filter is access procedure
-     (Line   : League.Strings.Universal_String;
-      From   : in out Positive;
-      Column : in out Positive;
-      Tag    : in out Ada.Tags.Tag);
+     (Line : Markdown.Blocks.Text_Line;
+      Tag  : in out Ada.Tags.Tag;
+      CIP  : out Can_Interrupt_Paragraph);
 
    procedure Register
      (Self   : in out Parser'Class;
@@ -38,12 +37,16 @@ private
    package Block_Vectors is new Ada.Containers.Vectors
      (Positive, Markdown.Blocks.Block_Access, Markdown.Blocks."=");
 
+   package Container_Vectors is new Ada.Containers.Vectors
+     (Positive, Markdown.Blocks.Container_Block_Access, Markdown.Blocks."=");
+
    package Filter_Vectors is new Ada.Containers.Vectors
      (Positive, Block_Start_Filter, "=");
 
    type Parser is tagged limited record
-      Blocks  : Block_Vectors.Vector;
-      Open    : Block_Vectors.Vector;
-      Filters : Filter_Vectors.Vector;
+      Blocks    : Block_Vectors.Vector;
+      Open      : Container_Vectors.Vector;
+      Open_Leaf : Markdown.Blocks.Block_Access;
+      Filters   : Filter_Vectors.Vector;
    end record;
 end Markdown.Parsers;
