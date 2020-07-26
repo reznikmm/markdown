@@ -10,6 +10,7 @@ with League.String_Vectors;
 
 with Markdown.ATX_Headings;
 with Markdown.Blockquotes;
+with Markdown.Indented_Code_Blocks;
 with Markdown.Paragraphs;
 with Markdown.Thematic_Breaks;
 with Markdown.Parsers;
@@ -26,6 +27,10 @@ procedure MD_Driver is
       overriding procedure Blockquote
         (Self  : in out Visitor;
          Block : Markdown.Blockquotes.Blockquote);
+
+      overriding procedure Indented_Code_Block
+        (Self  : in out Visitor;
+         Block : Markdown.Indented_Code_Blocks.Indented_Code_Block);
 
       overriding procedure Paragraph
         (Self  : in out Visitor;
@@ -64,6 +69,23 @@ procedure MD_Driver is
          Block.Visit_Children (Self);
          Ada.Wide_Wide_Text_IO.Put_Line ("</blockquote>");
       end Blockquote;
+
+      overriding procedure Indented_Code_Block
+        (Self  : in out Visitor;
+         Block : Markdown.Indented_Code_Blocks.Indented_Code_Block)
+      is
+         pragma Unreferenced (Self);
+         Lines : constant League.String_Vectors.Universal_String_Vector :=
+           Block.Lines;
+      begin
+         Ada.Wide_Wide_Text_IO.Put ("<pre><code>");
+
+         for J in 1 .. Lines.Length loop
+            Ada.Wide_Wide_Text_IO.Put_Line (Lines (J).To_Wide_Wide_String);
+         end loop;
+
+         Ada.Wide_Wide_Text_IO.Put_Line ("</code></pre>");
+      end Indented_Code_Block;
 
       overriding procedure Paragraph
         (Self  : in out Visitor;
@@ -121,6 +143,7 @@ begin
    Parser.Register (Markdown.ATX_Headings.Filter'Access);
    Parser.Register (Markdown.Blockquotes.Filter'Access);
    Parser.Register (Markdown.Thematic_Breaks.Filter'Access);
+   Parser.Register (Markdown.Indented_Code_Blocks.Filter'Access);
    Parser.Register (Markdown.Paragraphs.Filter'Access);
 
    while not Ada.Wide_Wide_Text_IO.End_Of_File loop
