@@ -5,6 +5,7 @@
 
 with Markdown.ATX_Headings;
 with Markdown.Blockquotes;
+with Markdown.Fenced_Code_Blocks;
 with Markdown.Indented_Code_Blocks;
 with Markdown.Paragraphs;
 with Markdown.Thematic_Breaks;
@@ -20,6 +21,10 @@ package Markdown.Visitors is
    not overriding procedure Blockquote
      (Self  : in out Visitor;
       Value : Markdown.Blockquotes.Blockquote) is null;
+
+   not overriding procedure Fenced_Code_Block
+     (Self  : in out Visitor;
+      Value : Markdown.Fenced_Code_Blocks.Fenced_Code_Block) is null;
 
    not overriding procedure Indented_Code_Block
      (Self  : in out Visitor;

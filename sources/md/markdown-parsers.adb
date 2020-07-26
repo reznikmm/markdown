@@ -90,7 +90,9 @@ package body Markdown.Parsers is
 
       Self.Find_Block_Start (Line, Tag, Int_Para);
 
-      if Self.Open_Leaf.Is_Assigned then
+      if not Self.Open.Is_Empty and not Match then
+         Self.Open_Leaf := null;
+      elsif Self.Open_Leaf.Is_Assigned then
          Match := False;
          Self.Open_Leaf.Append_Line (Line, Int_Para, Match);
 
