@@ -35,10 +35,14 @@ package Markdown.Paragraphs is
    function Lines (Self : Paragraph'Class)
      return League.String_Vectors.Universal_String_Vector;
 
+   subtype Heading_Level is Natural range 0 .. 2;
+   function Setext_Heading (Self : Paragraph'Class) return Heading_Level;
+
 private
 
    type Paragraph is new Markdown.Blocks.Block with record
-      Lines : League.String_Vectors.Universal_String_Vector;
+      Lines        : League.String_Vectors.Universal_String_Vector;
+      Setext_Level : Heading_Level := 0;
    end record;
 
 end Markdown.Paragraphs;

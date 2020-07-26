@@ -72,16 +72,36 @@ procedure MD_Driver is
          pragma Unreferenced (Self);
          Lines : constant League.String_Vectors.Universal_String_Vector :=
            Block.Lines;
+         Image : Wide_Wide_String := Block.Setext_Heading'Wide_Wide_Image;
       begin
-         Ada.Wide_Wide_Text_IO.Put ("<p>");
+         if Block.Setext_Heading = 0 then
+            Ada.Wide_Wide_Text_IO.Put ("<p>");
 
-         for J in 1 .. Lines.Length loop
-            if J /= 1 then
-               Ada.Wide_Wide_Text_IO.New_Line;
-            end if;
-            Ada.Wide_Wide_Text_IO.Put (Lines (J).To_Wide_Wide_String);
-         end loop;
-         Ada.Wide_Wide_Text_IO.Put_Line ("</p>");
+            for J in 1 .. Lines.Length loop
+               if J /= 1 then
+                  Ada.Wide_Wide_Text_IO.New_Line;
+               end if;
+               Ada.Wide_Wide_Text_IO.Put (Lines (J).To_Wide_Wide_String);
+            end loop;
+
+            Ada.Wide_Wide_Text_IO.Put_Line ("</p>");
+         else
+            Image (1) := 'h';
+            Ada.Wide_Wide_Text_IO.Put ("<");
+            Ada.Wide_Wide_Text_IO.Put (Image);
+            Ada.Wide_Wide_Text_IO.Put (">");
+
+            for J in 1 .. Lines.Length loop
+               if J /= 1 then
+                  Ada.Wide_Wide_Text_IO.New_Line;
+               end if;
+               Ada.Wide_Wide_Text_IO.Put (Lines (J).To_Wide_Wide_String);
+            end loop;
+
+            Ada.Wide_Wide_Text_IO.Put ("</");
+            Ada.Wide_Wide_Text_IO.Put (Image);
+            Ada.Wide_Wide_Text_IO.Put_Line (">");
+         end if;
       end Paragraph;
 
       overriding procedure Thematic_Break
