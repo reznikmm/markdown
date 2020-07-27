@@ -11,6 +11,7 @@ with League.String_Vectors;
 with Markdown.ATX_Headings;
 with Markdown.Blockquotes;
 with Markdown.Indented_Code_Blocks;
+with Markdown.HTML_Blocks;
 with Markdown.Fenced_Code_Blocks;
 with Markdown.Paragraphs;
 with Markdown.Thematic_Breaks;
@@ -32,6 +33,10 @@ procedure MD_Driver is
       overriding procedure Fenced_Code_Block
         (Self  : in out Visitor;
          Block : Markdown.Fenced_Code_Blocks.Fenced_Code_Block);
+
+      overriding procedure HTML_Block
+        (Self  : in out Visitor;
+         Block : Markdown.HTML_Blocks.HTML_Block);
 
       overriding procedure Indented_Code_Block
         (Self  : in out Visitor;
@@ -101,6 +106,19 @@ procedure MD_Driver is
 
          Ada.Wide_Wide_Text_IO.Put_Line ("</code></pre>");
       end Fenced_Code_Block;
+
+      overriding procedure HTML_Block
+        (Self  : in out Visitor;
+         Block : Markdown.HTML_Blocks.HTML_Block)
+      is
+         pragma Unreferenced (Self);
+         Lines : constant League.String_Vectors.Universal_String_Vector :=
+           Block.Lines;
+      begin
+         for J in 1 .. Lines.Length loop
+            Ada.Wide_Wide_Text_IO.Put_Line (Lines (J).To_Wide_Wide_String);
+         end loop;
+      end HTML_Block;
 
       overriding procedure Indented_Code_Block
         (Self  : in out Visitor;
@@ -177,6 +195,7 @@ begin
    Parser.Register (Markdown.Thematic_Breaks.Filter'Access);
    Parser.Register (Markdown.Indented_Code_Blocks.Filter'Access);
    Parser.Register (Markdown.Fenced_Code_Blocks.Filter'Access);
+   Parser.Register (Markdown.HTML_Blocks.Filter'Access);
    Parser.Register (Markdown.Paragraphs.Filter'Access);
 
    while not Ada.Wide_Wide_Text_IO.End_Of_File loop
