@@ -13,6 +13,7 @@ with Markdown.Blockquotes;
 with Markdown.Indented_Code_Blocks;
 with Markdown.HTML_Blocks;
 with Markdown.Fenced_Code_Blocks;
+with Markdown.Link_Reference_Definitions;
 with Markdown.Paragraphs;
 with Markdown.Thematic_Breaks;
 with Markdown.Parsers;
@@ -196,6 +197,7 @@ begin
    Parser.Register (Markdown.Indented_Code_Blocks.Filter'Access);
    Parser.Register (Markdown.Fenced_Code_Blocks.Filter'Access);
    Parser.Register (Markdown.HTML_Blocks.Filter'Access);
+   Parser.Register (Markdown.Link_Reference_Definitions.Filter'Access);
    Parser.Register (Markdown.Paragraphs.Filter'Access);
 
    while not Ada.Wide_Wide_Text_IO.End_Of_File loop
