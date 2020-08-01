@@ -10,6 +10,11 @@ with League.Strings;
 
 package body Markdown.Paragraphs is
 
+   Blank_Pattern : constant League.Regexps.Regexp_Pattern :=
+     League.Regexps.Compile
+       (League.Strings.To_Universal_String
+          ("^[\ \t]*$"));
+
    Pattern : constant League.Regexps.Regexp_Pattern :=
      League.Regexps.Compile
        (League.Strings.To_Universal_String
@@ -25,10 +30,13 @@ package body Markdown.Paragraphs is
       CIP  : Can_Interrupt_Paragraph;
       Ok   : in out Boolean)
    is
+      Blank_Match : constant League.Regexps.Regexp_Match :=
+        Blank_Pattern.Find_Match (Line.Line);
+
       Match : constant League.Regexps.Regexp_Match :=
         Pattern.Find_Match (Line.Line);
    begin
-      Ok := not Line.Line.Is_Empty and Self.Setext_Level = 0;
+      Ok := not Blank_Match.Is_Matched and Self.Setext_Level = 0;
 
       if Ok then
          if Match.Is_Matched then
@@ -70,9 +78,12 @@ package body Markdown.Paragraphs is
    procedure Filter
      (Line : Markdown.Blocks.Text_Line;
       Tag  : in out Ada.Tags.Tag;
-      CIP  : out Can_Interrupt_Paragraph) is
+      CIP  : out Can_Interrupt_Paragraph)
+   is
+      Blank_Match : constant League.Regexps.Regexp_Match :=
+        Blank_Pattern.Find_Match (Line.Line);
    begin
-      if not Line.Line.Is_Empty then
+      if not Blank_Match.Is_Matched then
          Tag := Paragraph'Tag;
          CIP := False;
       end if;

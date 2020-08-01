@@ -4,7 +4,14 @@
 ----------------------------------------------------------------
 with Ada.Tags.Generic_Dispatching_Constructor;
 
+with League.Regexps;
+
 package body Markdown.Parsers is
+
+   Blank_Pattern : constant League.Regexps.Regexp_Pattern :=
+     League.Regexps.Compile
+       (League.Strings.To_Universal_String
+          ("^[\ \t]*$"));
 
    type New_Block_Access is access all Markdown.Blocks.Block'Class;
 
@@ -109,7 +116,7 @@ package body Markdown.Parsers is
             Self.Create_Block (Line, Tag, New_Containers, New_Leaf);
             Self.Find_Block_Start (Line, Tag, Int_Para);
          end loop;
-         pragma Assert (Line.Line.Is_Empty);
+         pragma Assert (Blank_Pattern.Find_Match (Line.Line).Is_Matched);
       end if;
 
       if New_Leaf.Is_Assigned then
