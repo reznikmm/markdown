@@ -12,8 +12,8 @@ package body Custom_Writers is
 
    Amp_Entity_Reference  : constant League.Strings.Universal_String
      := League.Strings.To_Universal_String ("&amp;");
-   Apos_Entity_Reference : constant League.Strings.Universal_String
-     := League.Strings.To_Universal_String ("&apos;");
+--     Apos_Entity_Reference : constant League.Strings.Universal_String
+--       := League.Strings.To_Universal_String ("&apos;");
    Quot_Entity_Reference : constant League.Strings.Universal_String
      := League.Strings.To_Universal_String ("&quot;");
    Gt_Entity_Reference   : constant League.Strings.Universal_String
@@ -120,12 +120,12 @@ package body Custom_Writers is
                when '&' =>
                   Result.Append (Amp_Entity_Reference);
 
-               when ''' =>
-                  if Escape_All then
-                     Result.Append (Apos_Entity_Reference);
-                  else
-                     Result.Append (Text.Element (J).To_Wide_Wide_Character);
-                  end if;
+--                 when ''' =>
+--                    if Escape_All then
+--                       Result.Append (Apos_Entity_Reference);
+--                    else
+--                   Result.Append (Text.Element (J).To_Wide_Wide_Character);
+--                    end if;
 
                when '"' =>
                   if Escape_All then
