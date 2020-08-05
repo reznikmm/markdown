@@ -230,7 +230,6 @@ package body Markdown.Inline_Parsers is
    begin
       if Cursor.Line > Text.Length
         or else Text (Cursor.Line).Is_Empty
-        or else Cursor.Column = 1
       then
          return (Is_White_Space => True, Is_Punctuation => False);
       else
@@ -310,6 +309,21 @@ package body Markdown.Inline_Parsers is
       Item         : out Delimiter;
       Is_Delimiter : out Boolean)
    is
+      function Get_Follow_State (Cursor : Position) return Scanner_State;
+
+      ----------------------
+      -- Get_Follow_State --
+      ----------------------
+
+      function Get_Follow_State (Cursor : Position) return Scanner_State is
+      begin
+         if Cursor.Column = 1 then
+            return (Is_White_Space => True, Is_Punctuation => False);
+         else
+            return Get_State (Text, Cursor);
+         end if;
+      end Get_Follow_State;
+
       Line   : League.Strings.Universal_String renames Text (Cursor.Line);
       Follow : Scanner_State;
    begin
@@ -330,7 +344,7 @@ package body Markdown.Inline_Parsers is
                   others => False);
             begin
                Step (Text, Next.Count, Cursor);
-               Follow := Get_State (Text, Cursor);
+               Follow := Get_Follow_State (Cursor);
 
                --  Left flanking
                Next.Can_Open := not Follow.Is_White_Space and then
@@ -358,7 +372,7 @@ package body Markdown.Inline_Parsers is
                   others => False);
             begin
                Step (Text, Next.Count, Cursor);
-               Follow := Get_State (Text, Cursor);
+               Follow := Get_Follow_State (Cursor);
 
                Left_Flanking := not Follow.Is_White_Space and then
                  (not Follow.Is_Punctuation or else
