@@ -3,10 +3,16 @@
 --  SPDX-License-Identifier: MIT
 ----------------------------------------------------------------
 
+with Ada.Characters.Wide_Wide_Latin_1;
 with Ada.Wide_Wide_Text_IO;
 
 with League.Strings;
 with League.String_Vectors;
+with XML.SAX.Attributes;
+--  with XML.SAX.HTML5_Writers;
+--  with XML.SAX.Pretty_Writers;
+with Custom_Writers;
+with XML.SAX.Output_Destinations.Strings;
 
 with Markdown.ATX_Headings;
 with Markdown.Blockquotes;
@@ -21,8 +27,18 @@ with Markdown.Thematic_Breaks;
 with Markdown.Visitors;
 
 procedure MD_Driver is
+
+   function Trim_Doctype (Text : League.Strings.Universal_String)
+     return League.Strings.Universal_String;
+
    package Visitors is
-      type Visitor is new Markdown.Visitors.Visitor with null record;
+      type Visitor is limited new Markdown.Visitors.Visitor with record
+         New_Line  : League.Strings.Universal_String;
+         Namespace : League.Strings.Universal_String;
+         Writer    : aliased Custom_Writers.Writer;
+         Output    : aliased XML.SAX.Output_Destinations.Strings
+           .String_Output_Destination;
+      end record;
 
       overriding procedure ATX_Heading
         (Self  : in out Visitor;
@@ -54,78 +70,111 @@ procedure MD_Driver is
 
    end Visitors;
 
+   function "+" (Text : Wide_Wide_String)
+     return League.Strings.Universal_String
+       renames League.Strings.To_Universal_String;
+
    package body Visitors is
 
       procedure Write_Annotated_Text
-        (Text  : Markdown.Inline_Parsers.Annotated_Text);
+        (Self  : in out Visitor'Class;
+         Text  : Markdown.Inline_Parsers.Annotated_Text);
 
       overriding procedure ATX_Heading
         (Self  : in out Visitor;
          Block : Markdown.ATX_Headings.ATX_Heading)
       is
-         pragma Unreferenced (Self);
          Image : Wide_Wide_String := Block.Level'Wide_Wide_Image;
          Lines : League.String_Vectors.Universal_String_Vector;
+         Empty : XML.SAX.Attributes.SAX_Attributes;
       begin
          Lines.Append (Block.Title);
          Image (1) := 'h';
-         Ada.Wide_Wide_Text_IO.Put ("<");
-         Ada.Wide_Wide_Text_IO.Put (Image);
-         Ada.Wide_Wide_Text_IO.Put (">");
+         Self.Writer.Start_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +Image,
+            Attributes    => Empty);
 
-         Write_Annotated_Text (Markdown.Inline_Parsers.Parse (Lines));
+         Self.Write_Annotated_Text (Markdown.Inline_Parsers.Parse (Lines));
 
-         Ada.Wide_Wide_Text_IO.Put ("</");
-         Ada.Wide_Wide_Text_IO.Put (Image);
-         Ada.Wide_Wide_Text_IO.Put_Line (">");
+         Self.Writer.End_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +Image);
       end ATX_Heading;
 
       overriding procedure Blockquote
         (Self  : in out Visitor;
-         Block : Markdown.Blockquotes.Blockquote) is
+         Block : Markdown.Blockquotes.Blockquote)
+      is
+         Empty : XML.SAX.Attributes.SAX_Attributes;
       begin
-         Ada.Wide_Wide_Text_IO.Put_Line ("<blockquote>");
+         Self.Writer.Start_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"blockquote",
+            Attributes    => Empty);
          Block.Visit_Children (Self);
-         Ada.Wide_Wide_Text_IO.Put_Line ("</blockquote>");
+         Self.Writer.End_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"blockquote");
       end Blockquote;
 
       overriding procedure Fenced_Code_Block
         (Self  : in out Visitor;
          Block : Markdown.Fenced_Code_Blocks.Fenced_Code_Block)
       is
-         pragma Unreferenced (Self);
+         use type League.Strings.Universal_String;
+
          Words : constant League.String_Vectors.Universal_String_Vector :=
            Block.Info_String.Split (' ', League.Strings.Skip_Empty);
 
          Lines : constant League.String_Vectors.Universal_String_Vector :=
            Block.Lines;
+
+         Attr : XML.SAX.Attributes.SAX_Attributes;
       begin
-         Ada.Wide_Wide_Text_IO.Put ("<pre><code");
+         Self.Writer.Start_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"pre",
+            Attributes    => Attr);
 
          if not Block.Info_String.Is_Empty then
-            Ada.Wide_Wide_Text_IO.Put (" class=""language-");
-            Ada.Wide_Wide_Text_IO.Put (Words (1).To_Wide_Wide_String);
-            Ada.Wide_Wide_Text_IO.Put ('"');
+            Attr.Set_Value
+              (Namespace_URI => Self.Namespace,
+               Local_Name    => +"class",
+               Value         => "language-" & Words (1));
          end if;
-         Ada.Wide_Wide_Text_IO.Put (">");
+
+         Self.Writer.Start_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"code",
+            Attributes    => Attr);
 
          for J in 1 .. Lines.Length loop
-            Ada.Wide_Wide_Text_IO.Put_Line (Lines (J).To_Wide_Wide_String);
+            Self.Writer.Characters (Lines (J));
+            Self.Writer.Characters (Self.New_Line);
          end loop;
 
-         Ada.Wide_Wide_Text_IO.Put_Line ("</code></pre>");
+         Self.Writer.End_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"code");
+         Self.Writer.End_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"pre");
       end Fenced_Code_Block;
 
       overriding procedure HTML_Block
         (Self  : in out Visitor;
          Block : Markdown.HTML_Blocks.HTML_Block)
       is
-         pragma Unreferenced (Self);
          Lines : constant League.String_Vectors.Universal_String_Vector :=
            Block.Lines;
       begin
          for J in 1 .. Lines.Length loop
-            Ada.Wide_Wide_Text_IO.Put_Line (Lines (J).To_Wide_Wide_String);
+            if J > 1 then
+               Self.Writer.Characters (Self.New_Line);
+            end if;
+
+            Self.Writer.Unescaped_Characters (Lines (J));
          end loop;
       end HTML_Block;
 
@@ -133,24 +182,38 @@ procedure MD_Driver is
         (Self  : in out Visitor;
          Block : Markdown.Indented_Code_Blocks.Indented_Code_Block)
       is
-         pragma Unreferenced (Self);
          Lines : constant League.String_Vectors.Universal_String_Vector :=
            Block.Lines;
+
+         Empty : XML.SAX.Attributes.SAX_Attributes;
       begin
-         Ada.Wide_Wide_Text_IO.Put ("<pre><code>");
+         Self.Writer.Start_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"pre",
+            Attributes    => Empty);
+
+         Self.Writer.Start_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"code",
+            Attributes    => Empty);
 
          for J in 1 .. Lines.Length loop
-            Ada.Wide_Wide_Text_IO.Put_Line (Lines (J).To_Wide_Wide_String);
+            Self.Writer.Characters (Lines (J));
+            Self.Writer.Characters (Self.New_Line);
          end loop;
 
-         Ada.Wide_Wide_Text_IO.Put_Line ("</code></pre>");
+         Self.Writer.End_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"code");
+         Self.Writer.End_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"pre");
       end Indented_Code_Block;
 
       overriding procedure Paragraph
         (Self  : in out Visitor;
          Block : Markdown.Paragraphs.Paragraph)
       is
-         pragma Unreferenced (Self);
 
          Lines : constant League.String_Vectors.Universal_String_Vector :=
            Block.Lines;
@@ -158,22 +221,32 @@ procedure MD_Driver is
            Markdown.Inline_Parsers.Parse (Lines);
 
          Image : Wide_Wide_String := Block.Setext_Heading'Wide_Wide_Image;
+         Empty : XML.SAX.Attributes.SAX_Attributes;
+
       begin
          if Block.Setext_Heading = 0 then
-            Ada.Wide_Wide_Text_IO.Put ("<p>");
-            Write_Annotated_Text (Text);
-            Ada.Wide_Wide_Text_IO.Put_Line ("</p>");
+            Self.Writer.Start_Element
+              (Namespace_URI => Self.Namespace,
+               Local_Name    => +"p",
+               Attributes    => Empty);
+
+            Self.Write_Annotated_Text (Text);
+
+            Self.Writer.End_Element
+              (Namespace_URI => Self.Namespace,
+               Local_Name    => +"p");
          else
             Image (1) := 'h';
-            Ada.Wide_Wide_Text_IO.Put ("<");
-            Ada.Wide_Wide_Text_IO.Put (Image);
-            Ada.Wide_Wide_Text_IO.Put (">");
+            Self.Writer.Start_Element
+              (Namespace_URI => Self.Namespace,
+               Local_Name    => +Image,
+               Attributes    => Empty);
 
-            Write_Annotated_Text (Text);
+            Self.Write_Annotated_Text (Text);
 
-            Ada.Wide_Wide_Text_IO.Put ("</");
-            Ada.Wide_Wide_Text_IO.Put (Image);
-            Ada.Wide_Wide_Text_IO.Put_Line (">");
+            Self.Writer.End_Element
+              (Namespace_URI => Self.Namespace,
+               Local_Name    => +Image);
          end if;
       end Paragraph;
 
@@ -181,18 +254,29 @@ procedure MD_Driver is
         (Self  : in out Visitor;
          Value : Markdown.Thematic_Breaks.Thematic_Break)
       is
-         pragma Unreferenced (Self, Value);
+         pragma Unreferenced (Value);
+         Empty : XML.SAX.Attributes.SAX_Attributes;
       begin
-         Ada.Wide_Wide_Text_IO.Put_Line ("<hr />");
+         Self.Writer.Start_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"hr",
+            Attributes    => Empty);
+
+         Self.Writer.End_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"hr");
       end Thematic_Break;
 
       procedure Write_Annotated_Text
-        (Text  : Markdown.Inline_Parsers.Annotated_Text)
+        (Self  : in out Visitor'Class;
+         Text  : Markdown.Inline_Parsers.Annotated_Text)
       is
          procedure Write
            (From  : in out Positive;
             Next  : in out Positive;
             Limit : Natural);
+
+         Empty : XML.SAX.Attributes.SAX_Attributes;
 
          procedure Write
            (From  : in out Positive;
@@ -206,24 +290,37 @@ procedure MD_Driver is
                   Item : constant Markdown.Inline_Parsers.Annotation :=
                     Text.Annotation (From);
                begin
-                  Ada.Wide_Wide_Text_IO.Put
-                    (Text.Plain_Text.Slice
-                       (Next, Item.From - 1).To_Wide_Wide_String);
-                  Next := Item.From;
+                  if Next <= Item.From - 1 then
+                     Self.Writer.Characters
+                       (Text.Plain_Text.Slice
+                          (Next, Item.From - 1).To_Wide_Wide_String);
+                     Next := Item.From;
+                  end if;
+
                   From := From + 1;
 
                   case Item.Kind is
-                  when Markdown.Inline_Parsers.Soft_Line_Break =>
-                     Next := Next + 1;
-                     Ada.Wide_Wide_Text_IO.New_Line;
-                  when Markdown.Inline_Parsers.Emphasis =>
-                     Ada.Wide_Wide_Text_IO.Put ("<em>");
-                     Write (From, Next, Item.To);
-                     Ada.Wide_Wide_Text_IO.Put ("</em>");
-                  when Markdown.Inline_Parsers.Strong =>
-                     Ada.Wide_Wide_Text_IO.Put ("<strong>");
-                     Write (From, Next, Item.To);
-                     Ada.Wide_Wide_Text_IO.Put ("</strong>");
+                     when Markdown.Inline_Parsers.Soft_Line_Break =>
+                        Next := Next + 1;
+                        Self.Writer.Characters (Self.New_Line);
+                     when Markdown.Inline_Parsers.Emphasis =>
+                        Self.Writer.Start_Element
+                          (Namespace_URI => Self.Namespace,
+                           Local_Name    => +"em",
+                           Attributes    => Empty);
+                        Write (From, Next, Item.To);
+                        Self.Writer.End_Element
+                          (Namespace_URI => Self.Namespace,
+                           Local_Name    => +"em");
+                     when Markdown.Inline_Parsers.Strong =>
+                        Self.Writer.Start_Element
+                          (Namespace_URI => Self.Namespace,
+                           Local_Name    => +"strong",
+                           Attributes    => Empty);
+                        Write (From, Next, Item.To);
+                        Self.Writer.End_Element
+                          (Namespace_URI => Self.Namespace,
+                           Local_Name    => +"strong");
                   end case;
 
                   exit when Next >= Limit;
@@ -232,7 +329,7 @@ procedure MD_Driver is
             end loop;
 
             if Next <= Limit then
-               Ada.Wide_Wide_Text_IO.Put
+               Self.Writer.Characters
                  (Text.Plain_Text.Slice
                     (Next, Limit).To_Wide_Wide_String);
                Next := Limit + 1;
@@ -247,8 +344,30 @@ procedure MD_Driver is
 
    end Visitors;
 
+   ------------------
+   -- Trim_Doctype --
+   ------------------
+
+   function Trim_Doctype (Text : League.Strings.Universal_String)
+     return League.Strings.Universal_String
+   is
+      New_Line : constant Wide_Wide_String :=
+        (1 => Ada.Characters.Wide_Wide_Latin_1.LF);
+      Pos : constant Positive := Text.Index (">");
+      Result : League.Strings.Universal_String :=
+        Text.Slice (Pos + 1, Text.Length - 8);
+   begin
+      if Result.Ends_With (New_Line) then
+         Result := Result.Head_To (Result.Length - 1);
+      end if;
+
+      return Result;
+   end Trim_Doctype;
+
    Parser  : Markdown.Parsers.Parser;
    Visitor : Visitors.Visitor;
+   Empty   : XML.SAX.Attributes.SAX_Attributes;
+   Result  : League.Strings.Universal_String;
 begin
    Parser.Register (Markdown.ATX_Headings.Filter'Access);
    Parser.Register (Markdown.Blockquotes.Filter'Access);
@@ -258,6 +377,10 @@ begin
    Parser.Register (Markdown.HTML_Blocks.Filter'Access);
    Parser.Register (Markdown.Link_Reference_Definitions.Filter'Access);
    Parser.Register (Markdown.Paragraphs.Filter'Access);
+
+   Visitor.Writer.Set_Output_Destination (Visitor.Output'Unchecked_Access);
+   Visitor.New_Line := +(1 => Ada.Characters.Wide_Wide_Latin_1.LF);
+   Visitor.Namespace := +"http://www.w3.org/1999/xhtml";
 
    while not Ada.Wide_Wide_Text_IO.End_Of_File loop
       declare
@@ -271,5 +394,23 @@ begin
 
    Parser.Append_Line (League.Strings.Empty_Universal_String);
 
+   Visitor.Writer.Start_Document;
+   Visitor.Writer.Start_Prefix_Mapping
+     (Prefix        => +"",
+      Namespace_URI => Visitor.Namespace);
+   Visitor.Writer.Start_Element
+     (Namespace_URI => Visitor.Namespace,
+      Local_Name    => +"html",
+      Attributes    => Empty);
    Parser.Visit (Visitor);
+   Visitor.Writer.End_Element
+     (Namespace_URI => Visitor.Namespace,
+      Local_Name    => +"html");
+   Visitor.Writer.End_Document;
+
+   Result := Trim_Doctype (Visitor.Output.Get_Text);
+
+   if not Result.Is_Empty then
+      Ada.Wide_Wide_Text_IO.Put_Line (Result.To_Wide_Wide_String);
+   end if;
 end MD_Driver;
