@@ -6,6 +6,8 @@ with Ada.Tags.Generic_Dispatching_Constructor;
 
 with League.Regexps;
 
+with Markdown.Link_Reference_Definitions;
+
 package body Markdown.Parsers is
 
    Blank_Pattern : constant League.Regexps.Regexp_Pattern :=
@@ -27,6 +29,11 @@ package body Markdown.Parsers is
       Line : Blocks.Text_Line;
       Tag  : out Ada.Tags.Tag;
       Int  : out Boolean);
+
+   function Normalize_Link_Label
+     (Self : Parser'Class;
+      Label : League.Strings.Universal_String)
+        return League.Strings.Universal_String;
 
    ----------------------
    -- Find_Block_Start --
@@ -179,6 +186,34 @@ package body Markdown.Parsers is
       end if;
    end Create_Block;
 
+   --------------------------
+   -- Normalize_Link_Label --
+   --------------------------
+
+   function Normalize_Link_Label
+     (Self : Parser'Class;
+      Label : League.Strings.Universal_String)
+      return League.Strings.Universal_String
+   is
+      pragma Unreferenced (Self);
+      List : constant League.String_Vectors.Universal_String_Vector :=
+        Label.To_Simple_Casefold.Split (' ', League.Strings.Skip_Empty);
+   begin
+      return List.Join (" ");
+   end Normalize_Link_Label;
+
+   -------------------
+   -- Parse_Inlines --
+   -------------------
+
+   function Parse_Inlines
+     (Self : Parser'Class;
+      Text : League.String_Vectors.Universal_String_Vector)
+        return Markdown.Inline_Parsers.Annotated_Text is
+   begin
+      return Markdown.Inline_Parsers.Parse (Self, Text);
+   end Parse_Inlines;
+
    --------------
    -- Register --
    --------------
@@ -189,6 +224,61 @@ package body Markdown.Parsers is
    begin
       Self.Filters.Append (Filter);
    end Register;
+
+   -------------
+   -- Resolve --
+   -------------
+
+   overriding procedure Resolve
+     (Self        : Parser;
+      Label       : League.Strings.Universal_String;
+      Found       : out Boolean;
+      Destination : out League.Strings.Universal_String;
+      Title       : out League.String_Vectors.Universal_String_Vector)
+   is
+      Cursor : constant Link_Maps.Cursor :=
+        Self.Links.Find (Self.Normalize_Link_Label (Label));
+   begin
+      Found := Link_Maps.Has_Element (Cursor);
+
+      if Found then
+         Destination := Link_Maps.Element (Cursor).Destination;
+         Title := Link_Maps.Element (Cursor).Title;
+      end if;
+   end Resolve;
+
+   ----------
+   -- Stop --
+   ----------
+
+   procedure Stop (Self : in out Parser'Class) is
+      type Link_Definition_Visitor is new Markdown.Visitors.Visitor
+        with null record;
+
+      overriding procedure Link_Reference_Definition
+        (Ignore : in out Link_Definition_Visitor;
+         Value  : Link_Reference_Definitions.Link_Reference_Definition);
+
+      overriding procedure Link_Reference_Definition
+        (Ignore : in out Link_Definition_Visitor;
+         Value  : Link_Reference_Definitions.Link_Reference_Definition)
+      is
+         Cursor  : Link_Maps.Cursor;
+         Success : Boolean;
+      begin
+         Self.Links.Insert
+           (Self.Normalize_Link_Label (Value.Label),
+            (Value.Destination, Value.Title),
+            Cursor, Success);
+      end Link_Reference_Definition;
+
+      Visitor : Link_Definition_Visitor;
+   begin
+      Self.Append_Line (League.Strings.Empty_Universal_String);
+      Self.Links.Clear;
+
+      Self.Visit (Visitor);
+   end Stop;
 
    -----------
    -- Visit --

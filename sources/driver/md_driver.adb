@@ -33,6 +33,7 @@ procedure MD_Driver is
 
    package Visitors is
       type Visitor is limited new Markdown.Visitors.Visitor with record
+         Parser    : Markdown.Parsers.Parser;
          New_Line  : League.Strings.Universal_String;
          Namespace : League.Strings.Universal_String;
          Writer    : aliased Custom_Writers.Writer;
@@ -95,7 +96,7 @@ procedure MD_Driver is
             Local_Name    => +Image,
             Attributes    => Empty);
 
-         Self.Write_Annotated_Text (Markdown.Inline_Parsers.Parse (Lines));
+         Self.Write_Annotated_Text (Self.Parser.Parse_Inlines (Lines));
 
          Self.Writer.End_Element
            (Namespace_URI => Self.Namespace,
@@ -218,7 +219,7 @@ procedure MD_Driver is
          Lines : constant League.String_Vectors.Universal_String_Vector :=
            Block.Lines;
          Text  : constant Markdown.Inline_Parsers.Annotated_Text :=
-           Markdown.Inline_Parsers.Parse (Lines);
+           Self.Parser.Parse_Inlines (Lines);
 
          Image : Wide_Wide_String := Block.Setext_Heading'Wide_Wide_Image;
          Empty : XML.SAX.Attributes.SAX_Attributes;
@@ -364,8 +365,8 @@ procedure MD_Driver is
       return Result;
    end Trim_Doctype;
 
-   Parser  : Markdown.Parsers.Parser;
    Visitor : Visitors.Visitor;
+   Parser  : Markdown.Parsers.Parser renames Visitor.Parser;
    Empty   : XML.SAX.Attributes.SAX_Attributes;
    Result  : League.Strings.Universal_String;
 begin
@@ -392,7 +393,7 @@ begin
       end;
    end loop;
 
-   Parser.Append_Line (League.Strings.Empty_Universal_String);
+   Parser.Stop;
 
    Visitor.Writer.Start_Document;
    Visitor.Writer.Start_Prefix_Mapping

@@ -8,6 +8,7 @@ with Markdown.Blockquotes;
 with Markdown.Fenced_Code_Blocks;
 with Markdown.HTML_Blocks;
 with Markdown.Indented_Code_Blocks;
+with Markdown.Link_Reference_Definitions;
 with Markdown.Paragraphs;
 with Markdown.Thematic_Breaks;
 
@@ -34,6 +35,11 @@ package Markdown.Visitors is
    not overriding procedure Indented_Code_Block
      (Self  : in out Visitor;
       Value : Markdown.Indented_Code_Blocks.Indented_Code_Block) is null;
+
+   not overriding procedure Link_Reference_Definition
+     (Self  : in out Visitor;
+      Value : Markdown.Link_Reference_Definitions.Link_Reference_Definition) is
+        null;
 
    not overriding procedure Paragraph
      (Self  : in out Visitor;

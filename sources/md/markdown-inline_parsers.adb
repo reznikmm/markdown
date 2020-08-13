@@ -5,6 +5,7 @@
 
 with Ada.Containers.Vectors;
 with Ada.Containers.Generic_Anonymous_Array_Sort;
+with Ada.Iterator_Interfaces;
 
 with League.Characters;
 
@@ -18,7 +19,9 @@ package body Markdown.Inline_Parsers is
    function "+" (Cursor : Position; Value : Integer) return Position is
      ((Cursor.Line, Cursor.Column + Value));
 
-   type Delimiter_Kind is ('*', '_');
+   type Delimiter_Kind is ('*', '_', '[', ']');
+
+   subtype Emphasis_Kind is Delimiter_Kind range '*' .. '_';
 
    type Delimiter (Kind : Delimiter_Kind := '*') is record
       From : Position;
@@ -30,11 +33,10 @@ package body Markdown.Inline_Parsers is
             Is_Active : Boolean;
             Can_Open  : Boolean;
             Can_Close : Boolean;
+         when '[' | ']' =>
+            null;
       end case;
    end record;
-
-   package Delimiter_Vectors is new Ada.Containers.Vectors
-     (Positive, Delimiter);
 
    type Markup is record
       From   : Position;
@@ -108,6 +110,348 @@ package body Markdown.Inline_Parsers is
       return Result;
    end Count_Character;
 
+   package Delimiter_Lists is
+      type Delimiter_List is tagged private
+        with
+          Variable_Indexing => Reference,
+          Default_Iterator  => Iterate,
+          Iterator_Element  => Delimiter;
+
+      type Delimiter_Index is new Positive;
+
+      subtype Extended_Delimiter_Index is
+        Delimiter_Index'Base range 0 .. Delimiter_Index'Last;
+
+      function Has_Element
+        (Cursor : Extended_Delimiter_Index) return Boolean is (Cursor > 0);
+
+      package Delimiter_Iterator_Interfaces is new
+        Ada.Iterator_Interfaces (Extended_Delimiter_Index, Has_Element);
+
+      type Reference_Type
+        (Element : not null access Delimiter) is
+      null record
+        with
+          Implicit_Dereference => Element;
+
+      function Reference
+        (Self   : aliased in out Delimiter_List'Class;
+         Cursor : Delimiter_Index) return Reference_Type
+       with Inline;
+
+      function Iterate (Self : aliased Delimiter_List'Class)
+        return Delimiter_Iterator_Interfaces.Reversible_Iterator'Class;
+
+      type Delimiter_Filter_Kind is
+        (Any_Element,
+         Emphasis_Close,
+         Emphasis_Open);
+
+      type Delimiter_Filter (Kind : Delimiter_Filter_Kind := Any_Element) is
+         record
+            case Kind is
+               when Any_Element | Emphasis_Close =>
+                  null;
+               when Emphasis_Open =>
+                  Emphasis : Emphasis_Kind;
+                  Count    : Positive;
+            end case;
+         end record;
+
+      function Each
+        (Self   : aliased Delimiter_List'Class;
+         Filter : Delimiter_Filter := (Kind => Any_Element);
+         From   : Delimiter_Index := 1;
+         To     : Extended_Delimiter_Index := Delimiter_Index'Last)
+         return Delimiter_Iterator_Interfaces.Reversible_Iterator'Class;
+
+      procedure Item_Not_Found
+        (Self     : in out Delimiter_List'Class;
+         Emphasis : Emphasis_Kind;
+         Count    : Positive;
+         Index    : Delimiter_Index);
+
+      procedure Append
+        (Self : in out Delimiter_List'Class;
+         Item : Delimiter);
+
+   private
+      type X is array (Emphasis_Kind, Natural range 0 .. 2) of
+        Extended_Delimiter_Index;
+
+      package Delimiter_Vectors is new Ada.Containers.Vectors
+        (Delimiter_Index, Delimiter);
+
+      type Delimiter_List is tagged record
+         Data : Delimiter_Vectors.Vector;
+         Openers_Bottom : X := (others => (others => 0));
+      end record;
+   end Delimiter_Lists;
+
+   package body Delimiter_Lists is
+
+      type Iterator is limited new
+        Delimiter_Iterator_Interfaces.Reversible_Iterator with
+      record
+         List   : not null access constant Delimiter_List;
+         Filter : Delimiter_Filter;
+         First  : Delimiter_Index;
+         Last   : Extended_Delimiter_Index;
+      end record;
+
+      overriding function First
+        (Self : Iterator) return Extended_Delimiter_Index;
+
+      overriding function Last
+        (Self : Iterator) return Extended_Delimiter_Index;
+
+      overriding function Next
+        (Self  : Iterator;
+         Index : Extended_Delimiter_Index) return Extended_Delimiter_Index;
+
+      overriding function Previous
+        (Self  : Iterator;
+         Index : Extended_Delimiter_Index) return Extended_Delimiter_Index;
+
+      function Check
+        (Item   : Delimiter;
+         Filter : Delimiter_Filter) return Boolean;
+
+      ------------
+      -- Append --
+      ------------
+
+      procedure Append
+        (Self : in out Delimiter_List'Class;
+         Item : Delimiter) is
+      begin
+         Self.Data.Append (Item);
+
+         if Item.Kind in Emphasis_Kind
+           and then Item.Can_Open
+           and then Self.Openers_Bottom
+             (Item.Kind, Item.Count mod 3) = 0
+         then
+            Self.Openers_Bottom (Item.Kind, Item.Count mod 3) :=
+              Self.Data.Last_Index;
+         end if;
+      end Append;
+
+      -----------
+      -- Check --
+      -----------
+
+      function Check
+        (Item   : Delimiter;
+         Filter : Delimiter_Filter) return Boolean is
+      begin
+         if not Item.Is_Deleted then
+            case Filter.Kind is
+               when Emphasis_Open =>
+                  if Item.Kind = Filter.Emphasis
+                    and then Item.Can_Open
+                  then
+                     return True;
+                  end if;
+               when Emphasis_Close =>
+                  if Item.Kind in Emphasis_Kind
+                    and then Item.Can_Close
+                  then
+                     return True;
+                  end if;
+               when Any_Element =>
+                  return True;
+            end case;
+         end if;
+
+         return False;
+      end Check;
+
+      ----------
+      -- Each --
+      ----------
+
+      function Each
+        (Self   : aliased Delimiter_List'Class;
+         Filter : Delimiter_Filter := (Kind => Any_Element);
+         From   : Delimiter_Index := 1;
+         To     : Extended_Delimiter_Index := Delimiter_Index'Last)
+         return Delimiter_Iterator_Interfaces.Reversible_Iterator'Class
+      is
+         Start : Delimiter_Index := From;
+      begin
+         if Filter.Kind = Emphasis_Open then
+            Start := Delimiter_Index'Max
+              (From,
+               Self.Openers_Bottom (Filter.Emphasis, Filter.Count mod 3));
+         end if;
+
+         return Iterator'(Self'Access, Filter, Start,
+                          Delimiter_Index'Min (To, Self.Data.Last_Index));
+      end Each;
+
+      -----------
+      -- First --
+      -----------
+
+      overriding function First
+        (Self : Iterator) return Extended_Delimiter_Index is
+      begin
+         for J in Self.First .. Self.Last loop
+            if Check (Self.List.Data (J), Self.Filter) then
+               return J;
+            end if;
+         end loop;
+
+         return 0;
+      end First;
+
+      function Iterate (Self : aliased Delimiter_List'Class)
+        return Delimiter_Iterator_Interfaces.Reversible_Iterator'Class
+          is (Self.Each);
+
+      --------------------
+      -- Item_Not_Found --
+      --------------------
+
+      procedure Item_Not_Found
+        (Self     : in out Delimiter_List'Class;
+         Emphasis : Emphasis_Kind;
+         Count    : Positive;
+         Index    : Delimiter_Index) is
+      begin
+         Self.Openers_Bottom (Emphasis, Count mod 3) := Index;
+      end Item_Not_Found;
+
+      overriding function Last
+        (Self : Iterator) return Extended_Delimiter_Index is
+          (Self.Previous (Self.Last + 1));
+
+      ----------
+      -- Next --
+      ----------
+
+      overriding function Next
+        (Self  : Iterator;
+         Index : Extended_Delimiter_Index) return Extended_Delimiter_Index is
+      begin
+         if Index > 0 then
+            for J in Index + 1 .. Self.Last loop
+               if Check (Self.List.Data (J), Self.Filter) then
+                  return J;
+               end if;
+            end loop;
+         end if;
+
+         return 0;
+      end Next;
+
+      --------------
+      -- Previous --
+      --------------
+
+      overriding function Previous
+        (Self  : Iterator;
+         Index : Extended_Delimiter_Index) return Extended_Delimiter_Index is
+      begin
+         if Index > 0 then
+            for J in reverse Self.First .. Index - 1 loop
+               if Check (Self.List.Data (J), Self.Filter) then
+                  return J;
+               end if;
+            end loop;
+         end if;
+
+         return 0;
+      end Previous;
+
+      function Reference
+        (Self   : aliased in out Delimiter_List'Class;
+         Cursor : Delimiter_Index) return Reference_Type is
+      begin
+         return (Element => Self.Data.Reference (Cursor).Element);
+      end Reference;
+
+   end Delimiter_Lists;
+
+   procedure Process_Emphasis
+     (DL     : in out Delimiter_Lists.Delimiter_List;
+      Markup : out Markup_Vectors.Vector;
+      Bottom : Delimiter_Lists.Delimiter_Index := 1);
+
+   ----------------------
+   -- Process_Emphasis --
+   ----------------------
+
+   procedure Process_Emphasis
+     (DL     : in out Delimiter_Lists.Delimiter_List;
+      Markup : out Markup_Vectors.Vector;
+      Bottom : Delimiter_Lists.Delimiter_Index := 1)
+   is
+      use Delimiter_Lists;
+   begin
+      for J in DL.Each ((Kind => Emphasis_Close), Bottom) loop
+         declare
+            Closer : Delimiter renames DL (J);
+            Found  : Boolean := False;
+         begin
+            Each_Open_Emphasis :
+            for K in reverse DL.Each
+              ((Emphasis_Open, Closer.Kind, Closer.Count), Bottom, J - 1)
+            loop
+               declare
+                  Opener : Delimiter renames DL (K);
+                  Count  : Positive range 1 .. 2;
+               begin
+                  while not Opener.Is_Deleted and then
+                     --  If one of the delimiters can both open and close
+                     --  emphasis, then the sum of the lengths of the
+                     --  delimiter runs containing the opening and closing
+                     --  delimiters must not be a multiple of 3 unless both
+                     --  lengths are multiples of 3.
+                    (not ((Opener.Can_Open and Opener.Can_Close) or
+                          (Closer.Can_Open and Closer.Can_Close))
+                     or else (Opener.Count + Closer.Count) mod 3 /= 0
+                     or else (Opener.Count mod 3 = 0 and
+                                 Closer.Count mod 3 = 0))
+                  loop
+                     Found := True;
+                     Count := Positive'Min
+                       (2, Positive'Min (Opener.Count, Closer.Count));
+
+                     Markup.Append
+                       ((Opener.From + (Opener.Count - Count), Count));
+
+                     Markup.Append ((Closer.From, Count));
+
+                     for M in K + 1 .. J - 1 loop
+                        DL (M).Is_Deleted := True;
+                     end loop;
+
+                     if Opener.Count = Count then
+                        Opener.Is_Deleted := True;
+                     else
+                        Opener.Count := Opener.Count - Count;
+                     end if;
+
+                     if Closer.Count = Count then
+                        Closer.Is_Deleted := True;
+                        exit Each_Open_Emphasis;
+                     else
+                        Closer.Count := Closer.Count - Count;
+                        Closer.From := Closer.From  + Count;
+                     end if;
+                  end loop;
+               end;
+            end loop Each_Open_Emphasis;
+
+            if not Found then
+               DL.Item_Not_Found (Closer.Kind, Closer.Count, J);
+            end if;
+         end;
+      end loop;
+   end Process_Emphasis;
+
    -----------------
    -- Find_Markup --
    -----------------
@@ -117,7 +461,7 @@ package body Markdown.Inline_Parsers is
       Markup : out Markup_Vectors.Vector)
    is
       State        : Scanner_State;
-      Stack        : Delimiter_Vectors.Vector;
+      List         : Delimiter_Lists.Delimiter_List;
       Cursor       : Position := (1, 1);
       Item         : Delimiter;
       Is_Delimiter : Boolean;
@@ -126,95 +470,11 @@ package body Markdown.Inline_Parsers is
          Read_Delimiter (Text, Cursor, State, Item, Is_Delimiter);
 
          if Is_Delimiter then
-            Stack.Append (Item);
+            List.Append (Item);
          end if;
       end loop;
 
-      declare
-         Stack_Bottom : constant Positive := 1;
-         J : Positive := Stack_Bottom;
-         Openers_Bottom : array
-           (Delimiter_Kind range '*' .. '_', Natural range 0 .. 2) of
-             Positive := (others => (others => Stack_Bottom));
-      begin
-         while J <= Stack.Last_Index loop
-            declare
-               Closer : Delimiter renames Stack (J);
-               Found  : Boolean := False;
-               Count  : Positive;
-            begin
-               if not Closer.Is_Deleted and then
---                 Closer.Kind in Openers_Bottom'Range (1) and then
-                 Closer.Can_Close
-               then
-                  for K in reverse
-                    Openers_Bottom (Closer.Kind, Closer.Count mod 3) .. J - 1
-                  loop
-                     if not Stack (K).Is_Deleted and then
-                       Stack (K).Kind = Closer.Kind and then
-                       Stack (K).Can_Open and then
-                       --  If one of the delimiters can both open and close
-                       --  emphasis, then the sum of the lengths of the
-                       --  delimiter runs containing the opening and closing
-                       --  delimiters must not be a multiple of 3 unless both
-                       --  lengths are multiples of 3.
-                       (not ((Stack (K).Can_Open and Stack (K).Can_Close) or
-                             (Closer.Can_Open and Closer.Can_Close))
-                       or else (Stack (K).Count + Closer.Count) mod 3 /= 0
-                       or else (Stack (K).Count mod 3 = 0
-                                and Closer.Count mod 3 = 0))
-                     then
-                        declare
-                           Opener : Delimiter renames Stack (K);
-                        begin
-                           Count := Positive'Min
-                             (2, Positive'Min (Opener.Count, Closer.Count));
-
-                           Markup.Append
-                             ((Opener.From + (Opener.Count - Count), Count));
-
-                           Markup.Append ((Closer.From, Count));
-
-                           for M in K + 1 .. J - 1 loop
-                              Stack (M).Is_Deleted := True;
-                           end loop;
-
-                           if Opener.Count = Count then
-                              Opener.Is_Deleted := True;
-                           else
-                              Opener.Count := Opener.Count - Count;
-                           end if;
-
-                           if Closer.Count = Count then
-                              Closer.Is_Deleted := True;
-                              J := J + 1;
-                           else
-                              Closer.Count := Closer.Count - Count;
-                              Closer.From := Closer.From  + Count;
-                           end if;
-
-                           Found := True;
-                           exit;
-                        end;
-                     end if;
-                  end loop;
-
-                  if not Found then
-                     Openers_Bottom (Closer.Kind, Closer.Count mod 3) :=
-                       Positive'Max (J - 1, Stack_Bottom);
-
-                     if not Closer.Can_Open then
-                        Closer.Is_Deleted := True;
-                     end if;
-
-                     J := J + 1;
-                  end if;
-               else
-                  J := J + 1;
-               end if;
-            end;
-         end loop;
-      end;
+      Process_Emphasis (List, Markup);
    end Find_Markup;
 
    ---------------
@@ -253,9 +513,12 @@ package body Markdown.Inline_Parsers is
    -- Parse --
    -----------
 
-   function Parse (Text : League.String_Vectors.Universal_String_Vector)
-     return Annotated_Text
+   function Parse
+     (Register : Markdown.Link_Registers.Link_Register'Class;
+      Text     : League.String_Vectors.Universal_String_Vector)
+        return Annotated_Text
    is
+      pragma Unreferenced (Register);
       Markup : Markup_Vectors.Vector;
 
    begin
@@ -394,6 +657,21 @@ package body Markdown.Inline_Parsers is
                Is_Delimiter := True;
             end;
 
+         when '[' =>
+            State := Get_State (Text, Cursor);
+            Item := (Kind   => '[',
+                     From       => Cursor,
+                     Is_Deleted => False);
+            Step (Text, 1, Cursor);
+            Is_Delimiter := True;
+
+         when ']' =>
+            State := Get_State (Text, Cursor);
+            Item := (Kind   => ']',
+                     From       => Cursor,
+                     Is_Deleted => False);
+            Step (Text, 1, Cursor);
+            Is_Delimiter := True;
          when '\' =>
             State := Get_State (Text, Cursor);
             Step (Text, 2, Cursor);

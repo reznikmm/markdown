@@ -283,7 +283,7 @@ package body Markdown.Link_Reference_Definitions is
      (Self    : Link_Reference_Definition;
       Visitor : in out Markdown.Visitors.Visitor'Class) is
    begin
-      null;
+      Visitor.Link_Reference_Definition (Self);
    end Visit;
 
 end Markdown.Link_Reference_Definitions;

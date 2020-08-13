@@ -6,6 +6,8 @@
 with League.Strings;
 with League.String_Vectors;
 
+with Markdown.Link_Registers;
+
 package Markdown.Inline_Parsers is
 
    type Annotation_Kind is
@@ -28,7 +30,9 @@ package Markdown.Inline_Parsers is
       Annotation : Annotation_Array (1 .. Count);
    end record;
 
-   function Parse (Text : League.String_Vectors.Universal_String_Vector)
-     return Annotated_Text;
+   function Parse
+     (Register : Markdown.Link_Registers.Link_Register'Class;
+      Text     : League.String_Vectors.Universal_String_Vector)
+        return Annotated_Text;
 
 end Markdown.Inline_Parsers;
