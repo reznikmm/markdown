@@ -322,6 +322,27 @@ procedure MD_Driver is
                         Self.Writer.End_Element
                           (Namespace_URI => Self.Namespace,
                            Local_Name    => +"strong");
+                     when Markdown.Inline_Parsers.Link =>
+                        declare
+                           Attr  : XML.SAX.Attributes.SAX_Attributes;
+                           Title : constant League.Strings.Universal_String :=
+                             Item.Title.Join (' ');
+                        begin
+                           Attr.Set_Value
+                             (Self.Namespace, +"href", Item.Destination);
+                           if not Title.Is_Empty then
+                              Attr.Set_Value
+                                (Self.Namespace, +"title", Title);
+                           end if;
+                           Self.Writer.Start_Element
+                             (Namespace_URI => Self.Namespace,
+                              Local_Name    => +"a",
+                              Attributes    => Attr);
+                           Write (From, Next, Item.To);
+                           Self.Writer.End_Element
+                             (Namespace_URI => Self.Namespace,
+                              Local_Name    => +"a");
+                        end;
                   end case;
 
                   exit when Next >= Limit;

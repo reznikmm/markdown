@@ -37,7 +37,7 @@ package body Markdown.Link_Reference_Definitions is
      +("^\ {0,3}(" & Link_Label & ")\:" &
        --  Grps:1    2,3
        "[\ \t\n\v\f\r\>]*(" & Link_Destination & "(" &
-       --  Groups:       4    5,6          7
+       --  Groups:       4    5,6                 7
        "[\ \t\n\v\f\r\>]+(" & Link_Title &
        --  Groups:       8    9,10,11
        "))?)?[\ \t\n\v\f\r\>]*$"
@@ -193,7 +193,7 @@ package body Markdown.Link_Reference_Definitions is
          if Has_Destination then
             if Has_Title then
                Self.URL := Line.Line.Slice
-                 (Match.First_Index (4), Match.Last_Index (7) - 1);
+                 (Match.First_Index (4), Match.First_Index (7) - 1);
 
                for J in 9 .. 11 loop
                   if Match.Last_Index (J) >= Match.First_Index (J) then

@@ -38,9 +38,18 @@ package body Markdown.Inline_Parsers is
       end case;
    end record;
 
-   type Markup is record
+   type Markup_Kind is (Emphasis, Link);
+
+   type Markup (Kind : Markup_Kind := Emphasis) is record
       From   : Position;
       Length : Positive;
+      case Kind is
+         when Link =>
+            URL : League.Strings.Universal_String;
+            Title : League.String_Vectors.Universal_String_Vector;
+         when Emphasis =>
+            null;
+      end case;
    end record;
 
    type Markup_Index is new Positive;
@@ -48,8 +57,9 @@ package body Markdown.Inline_Parsers is
    package Markup_Vectors is new Ada.Containers.Vectors (Markup_Index, Markup);
 
    procedure Find_Markup
-     (Text   : League.String_Vectors.Universal_String_Vector;
-      Markup : out Markup_Vectors.Vector);
+     (Register : Markdown.Link_Registers.Link_Register'Class;
+      Text     : League.String_Vectors.Universal_String_Vector;
+      Markup   : out Markup_Vectors.Vector);
 
    type Scanner_State is record
       Is_White_Space : Boolean := True;
@@ -110,6 +120,10 @@ package body Markdown.Inline_Parsers is
       return Result;
    end Count_Character;
 
+   ---------------------
+   -- Delimiter_Lists --
+   ---------------------
+
    package Delimiter_Lists is
       type Delimiter_List is tagged private
         with
@@ -144,6 +158,7 @@ package body Markdown.Inline_Parsers is
 
       type Delimiter_Filter_Kind is
         (Any_Element,
+         Kind_Of,
          Emphasis_Close,
          Emphasis_Open);
 
@@ -152,6 +167,8 @@ package body Markdown.Inline_Parsers is
             case Kind is
                when Any_Element | Emphasis_Close =>
                   null;
+               when Kind_Of =>
+                  Given_Kind : Delimiter_Kind;
                when Emphasis_Open =>
                   Emphasis : Emphasis_Kind;
                   Count    : Positive;
@@ -257,6 +274,10 @@ package body Markdown.Inline_Parsers is
                   if Item.Kind in Emphasis_Kind
                     and then Item.Can_Close
                   then
+                     return True;
+                  end if;
+               when Kind_Of =>
+                  if Item.Kind = Filter.Given_Kind then
                      return True;
                   end if;
                when Any_Element =>
@@ -379,6 +400,70 @@ package body Markdown.Inline_Parsers is
       Markup : out Markup_Vectors.Vector;
       Bottom : Delimiter_Lists.Delimiter_Index := 1);
 
+   procedure Process_Links
+     (Register : Markdown.Link_Registers.Link_Register'Class;
+      Text     : League.String_Vectors.Universal_String_Vector;
+      DL       : in out Delimiter_Lists.Delimiter_List;
+      Markup   : out Markup_Vectors.Vector;
+      Bottom   : Delimiter_Lists.Delimiter_Index := 1);
+
+   procedure Parse_Link_Ahead
+     (Register : Markdown.Link_Registers.Link_Register'Class;
+      Text     : League.String_Vectors.Universal_String_Vector;
+      DL       : in out Delimiter_Lists.Delimiter_List;
+      From     : Delimiter_Lists.Delimiter_Index;
+      To       : Delimiter_Lists.Delimiter_Index;
+      URL      : out League.Strings.Universal_String;
+      Title    : out League.String_Vectors.Universal_String_Vector;
+      Ok       : out Boolean);
+
+   ----------------------
+   -- Parse_Link_Ahead --
+   ----------------------
+
+   procedure Parse_Link_Ahead
+     (Register : Markdown.Link_Registers.Link_Register'Class;
+      Text     : League.String_Vectors.Universal_String_Vector;
+      DL       : in out Delimiter_Lists.Delimiter_List;
+      From     : Delimiter_Lists.Delimiter_Index;
+      To       : Delimiter_Lists.Delimiter_Index;
+      URL      : out League.Strings.Universal_String;
+      Title    : out League.String_Vectors.Universal_String_Vector;
+      Ok       : out Boolean)
+   is
+      procedure To_Link_Label
+        (Text  : League.String_Vectors.Universal_String_Vector;
+         From  : Position;
+         To    : Position;
+         Label : out League.Strings.Universal_String;
+         Ok    : out Boolean);
+
+      procedure To_Link_Label
+        (Text  : League.String_Vectors.Universal_String_Vector;
+         From  : Position;
+         To    : Position;
+         Label : out League.Strings.Universal_String;
+         Ok    : out Boolean)
+      is
+         Line : League.Strings.Universal_String renames Text (From.Line);
+      begin
+         if From.Line = To.Line then
+            Label := Line.Slice (From.Column, To.Column);
+            Ok := True;
+         else
+            Ok := False;
+         end if;
+      end To_Link_Label;
+
+      Label : League.Strings.Universal_String;
+   begin
+      To_Link_Label (Text, DL (From).From, DL (To).From, Label, Ok);
+
+      if Ok then
+         Register.Resolve (Label, Ok, URL, Title);
+      end if;
+   end Parse_Link_Ahead;
+
    ----------------------
    -- Process_Emphasis --
    ----------------------
@@ -390,14 +475,16 @@ package body Markdown.Inline_Parsers is
    is
       use Delimiter_Lists;
    begin
-      for J in DL.Each ((Kind => Emphasis_Close), Bottom) loop
+      for J in DL.Each ((Kind => Emphasis_Close), From => Bottom) loop
          declare
             Closer : Delimiter renames DL (J);
             Found  : Boolean := False;
          begin
             Each_Open_Emphasis :
             for K in reverse DL.Each
-              ((Emphasis_Open, Closer.Kind, Closer.Count), Bottom, J - 1)
+              ((Emphasis_Open, Closer.Kind, Closer.Count),
+               From => Bottom,
+               To   => J - 1)
             loop
                declare
                   Opener : Delimiter renames DL (K);
@@ -420,9 +507,11 @@ package body Markdown.Inline_Parsers is
                        (2, Positive'Min (Opener.Count, Closer.Count));
 
                      Markup.Append
-                       ((Opener.From + (Opener.Count - Count), Count));
+                       ((Emphasis,
+                         Opener.From + (Opener.Count - Count),
+                         Count));
 
-                     Markup.Append ((Closer.From, Count));
+                     Markup.Append ((Emphasis, Closer.From, Count));
 
                      for M in K + 1 .. J - 1 loop
                         DL (M).Is_Deleted := True;
@@ -452,13 +541,66 @@ package body Markdown.Inline_Parsers is
       end loop;
    end Process_Emphasis;
 
+   -------------------
+   -- Process_Links --
+   -------------------
+
+   procedure Process_Links
+     (Register : Markdown.Link_Registers.Link_Register'Class;
+      Text     : League.String_Vectors.Universal_String_Vector;
+      DL       : in out Delimiter_Lists.Delimiter_List;
+      Markup   : out Markup_Vectors.Vector;
+      Bottom   : Delimiter_Lists.Delimiter_Index := 1)
+   is
+      use Delimiter_Lists;
+   begin
+      for J in DL.Each ((Kind_Of, ']')) loop
+         declare
+            Closer : Delimiter renames DL (J);
+         begin
+            for K in reverse DL.Each
+              ((Kind_Of, '['),
+               From => Bottom,
+               To   => J - 1)
+            loop
+               declare
+                  Opener : Delimiter renames DL (K);
+                  URL    : League.Strings.Universal_String;
+                  Title  : League.String_Vectors.Universal_String_Vector;
+                  Ok     : Boolean;
+               begin
+                  Parse_Link_Ahead (Register, Text, DL, K, J, URL, Title, Ok);
+
+                  if Ok then
+                     Markup.Append ((Link, Opener.From, 1, URL, Title));
+                     Markup.Append ((Link, Closer.From, 1, URL, Title));
+
+                     Process_Emphasis (DL, Markup, K + 1); --  , J - 1);
+
+                     for M in DL.Each
+                       ((Kind_Of, '['),
+                        From => Bottom,
+                        To   => J - 1)
+                     loop
+                        DL (M).Is_Deleted := True;
+                     end loop;
+                  end if;
+               end;
+            end loop;
+
+            Closer.Is_Deleted := True;
+         end;
+      end loop;
+   end Process_Links;
+
    -----------------
    -- Find_Markup --
    -----------------
 
    procedure Find_Markup
-     (Text   : League.String_Vectors.Universal_String_Vector;
-      Markup : out Markup_Vectors.Vector)
+     (Register : Markdown.Link_Registers.Link_Register'Class;
+      Text     : League.String_Vectors.Universal_String_Vector;
+      Markup   : out Markup_Vectors.Vector)
    is
       State        : Scanner_State;
       List         : Delimiter_Lists.Delimiter_List;
@@ -474,6 +616,7 @@ package body Markdown.Inline_Parsers is
          end if;
       end loop;
 
+      Process_Links (Register, Text, List, Markup);
       Process_Emphasis (List, Markup);
    end Find_Markup;
 
@@ -518,11 +661,10 @@ package body Markdown.Inline_Parsers is
       Text     : League.String_Vectors.Universal_String_Vector)
         return Annotated_Text
    is
-      pragma Unreferenced (Register);
       Markup : Markup_Vectors.Vector;
 
    begin
-      Find_Markup (Text, Markup);
+      Find_Markup (Register, Text, Markup);
 
       return To_Annotated_Text (Text, Markup);
 
@@ -806,10 +948,11 @@ package body Markdown.Inline_Parsers is
    -- To_Annotation --
    -------------------
 
-   function To_Annotation (Item : Markup;
-      Pos  : Positive) return Annotation is
+   function To_Annotation (Item : Markup; Pos  : Positive) return Annotation is
    begin
-      if Item.Length = 1 then
+      if Item.Kind = Link then
+         return (Link, Pos, Pos, Item.URL, Item.Title);
+      elsif Item.Length = 1 then
          return (Emphasis, Pos, Pos);
       else
          return (Strong, Pos, Pos);
