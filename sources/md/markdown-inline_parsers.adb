@@ -8,8 +8,30 @@ with Ada.Containers.Generic_Anonymous_Array_Sort;
 with Ada.Iterator_Interfaces;
 
 with League.Characters;
+with League.Regexps;
+
+with Markdown.Common_Patterns;
 
 package body Markdown.Inline_Parsers is
+
+   function "+" (Text : Wide_Wide_String)
+     return League.Regexps.Regexp_Pattern
+       is (League.Regexps.Compile (League.Strings.To_Universal_String (Text)));
+
+   Link_Destination : Wide_Wide_String renames
+     Markdown.Common_Patterns.Link_Destination;
+   --  Groups: 2
+
+   Link_Title : Wide_Wide_String renames Markdown.Common_Patterns.Link_Title;
+   --  Groups: 4
+
+   Link_Pattern : constant League.Regexps.Regexp_Pattern :=
+     +("^\([\ \t\n\v\f\r\>]*(" & Link_Destination & ")?(" &
+       --  Groups:          1    2,3                 1 4
+       "[\ \t\n\v\f\r\>]+(" & Link_Title &
+       --  Groups:       5    6,7,8,9
+       "))?[\ \t\n\v\f\r\>]*(\))?");
+   --   54                  10 10
 
    type Position is record
       Line   : Positive;
@@ -33,8 +55,10 @@ package body Markdown.Inline_Parsers is
             Is_Active : Boolean;
             Can_Open  : Boolean;
             Can_Close : Boolean;
-         when '[' | ']' =>
+         when '[' =>
             null;
+         when ']' =>
+            To : Position;
       end case;
    end record;
 
@@ -411,8 +435,8 @@ package body Markdown.Inline_Parsers is
      (Register : Markdown.Link_Registers.Link_Register'Class;
       Text     : League.String_Vectors.Universal_String_Vector;
       DL       : in out Delimiter_Lists.Delimiter_List;
-      From     : Delimiter_Lists.Delimiter_Index;
-      To       : Delimiter_Lists.Delimiter_Index;
+      Open     : Delimiter_Lists.Delimiter_Index;
+      Close    : Delimiter_Lists.Delimiter_Index;
       URL      : out League.Strings.Universal_String;
       Title    : out League.String_Vectors.Universal_String_Vector;
       Ok       : out Boolean);
@@ -425,42 +449,124 @@ package body Markdown.Inline_Parsers is
      (Register : Markdown.Link_Registers.Link_Register'Class;
       Text     : League.String_Vectors.Universal_String_Vector;
       DL       : in out Delimiter_Lists.Delimiter_List;
-      From     : Delimiter_Lists.Delimiter_Index;
-      To       : Delimiter_Lists.Delimiter_Index;
+      Open     : Delimiter_Lists.Delimiter_Index;
+      Close    : Delimiter_Lists.Delimiter_Index;
       URL      : out League.Strings.Universal_String;
       Title    : out League.String_Vectors.Universal_String_Vector;
       Ok       : out Boolean)
    is
       procedure To_Link_Label
         (Text  : League.String_Vectors.Universal_String_Vector;
-         From  : Position;
-         To    : Position;
+         Open  : Position;
+         Close : Position;
          Label : out League.Strings.Universal_String;
          Ok    : out Boolean);
 
-      procedure To_Link_Label
+      procedure To_Inline_Link
         (Text  : League.String_Vectors.Universal_String_Vector;
          From  : Position;
-         To    : Position;
+         To    : in out Position;
+         Ok    : out Boolean);
+
+      --------------------
+      -- To_Inline_Link --
+      --------------------
+
+      procedure To_Inline_Link
+        (Text  : League.String_Vectors.Universal_String_Vector;
+         From  : Position;
+         To    : in out Position;
+         Ok    : out Boolean)
+      is
+--         Start : Wide_Wide_Character;  --  Title quote character
+         Skip  : constant Positive := From.Column;
+
+         Line  : constant League.Strings.Universal_String :=
+           Text (From.Line).Tail_From (Skip + 1);
+
+         Link_Match : constant League.Regexps.Regexp_Match :=
+           Link_Pattern.Find_Match (Line);
+
+         Complete   : constant Boolean := Link_Match.Is_Matched and then
+           not Link_Match.Capture (10).Is_Empty;
+         --  We have whole inline_link matched
+
+         Has_Title  : constant Boolean := Link_Match.Is_Matched and then
+           Link_Match.First_Index (4) <= Link_Match.Last_Index (4) and then
+           (for some J in 6 .. 8 =>
+              Link_Match.First_Index (J) <= Link_Match.Last_Index (J));
+         --  Is title complete
+
+         Has_URL : constant Boolean := Link_Match.Is_Matched and then
+           Link_Match.First_Index (1) <= Link_Match.Last_Index (1);
+
+         Piece : League.Strings.Universal_String;
+      begin
+         if not Link_Match.Is_Matched
+           or else (not Complete and Link_Match.Last_Index /= Line.Length)
+           or else (Complete and not Has_Title)
+         then
+            Ok := False;
+            return;
+         end if;
+
+         if Has_URL  then
+            URL := Link_Match.Capture (1);
+
+            if URL.Starts_With ("<") then
+               URL := URL.Slice (2, URL.Length - 1);
+            end if;
+         end if;
+
+         Piece := Link_Match.Capture (5);
+
+         if Complete then
+            Title.Append (Piece.Slice (2, Piece.Length - 1));
+            To.Column := Skip + Link_Match.Last_Index;
+            Ok := True;
+            return;
+         elsif Has_Title then
+            Title.Append (Piece.Slice (2, Piece.Length));
+         end if;
+
+--           for J in To.Line + 1 .. Text.Length loop
+--              Line := Text (J);
+--           end loop;
+
+         Ok := False;
+      end To_Inline_Link;
+
+      -------------------
+      -- To_Link_Label --
+      -------------------
+
+      procedure To_Link_Label
+        (Text  : League.String_Vectors.Universal_String_Vector;
+         Open  : Position;
+         Close : Position;
          Label : out League.Strings.Universal_String;
          Ok    : out Boolean)
       is
-         Line : League.Strings.Universal_String renames Text (From.Line);
+         Line : League.Strings.Universal_String renames Text (Open.Line);
       begin
-         if From.Line = To.Line then
-            Label := Line.Slice (From.Column, To.Column);
+         if Open.Line = Close.Line then
+            Label := Line.Slice (Open.Column, Close.Column);
             Ok := True;
          else
             Ok := False;
          end if;
       end To_Link_Label;
 
-      Label : League.Strings.Universal_String;
+      Label      : League.Strings.Universal_String;
    begin
-      To_Link_Label (Text, DL (From).From, DL (To).From, Label, Ok);
+      To_Inline_Link (Text, DL (Close).From, DL (Close).To, Ok);
 
-      if Ok then
-         Register.Resolve (Label, Ok, URL, Title);
+      if not Ok then
+         To_Link_Label (Text, DL (Open).From, DL (Close).From, Label, Ok);
+
+         if Ok then
+            Register.Resolve (Label, Ok, URL, Title);
+         end if;
       end if;
    end Parse_Link_Ahead;
 
@@ -573,7 +679,12 @@ package body Markdown.Inline_Parsers is
 
                   if Ok then
                      Markup.Append ((Link, Opener.From, 1, URL, Title));
-                     Markup.Append ((Link, Closer.From, 1, URL, Title));
+                     Markup.Append
+                       ((Link,
+                        Closer.From,
+                        Closer.To.Column - Closer.From.Column + 1,
+                        URL,
+                        Title));
 
                      Process_Emphasis (DL, Markup, K + 1); --  , J - 1);
 
@@ -801,7 +912,7 @@ package body Markdown.Inline_Parsers is
 
          when '[' =>
             State := Get_State (Text, Cursor);
-            Item := (Kind   => '[',
+            Item := (Kind       => '[',
                      From       => Cursor,
                      Is_Deleted => False);
             Step (Text, 1, Cursor);
@@ -809,8 +920,9 @@ package body Markdown.Inline_Parsers is
 
          when ']' =>
             State := Get_State (Text, Cursor);
-            Item := (Kind   => ']',
+            Item := (Kind       => ']',
                      From       => Cursor,
+                     To         => Cursor,
                      Is_Deleted => False);
             Step (Text, 1, Cursor);
             Is_Delimiter := True;

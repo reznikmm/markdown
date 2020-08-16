@@ -5,6 +5,7 @@
 
 with League.Regexps;
 
+with Markdown.Common_Patterns;
 with Markdown.Visitors;
 
 package body Markdown.Link_Reference_Definitions is
@@ -13,25 +14,18 @@ package body Markdown.Link_Reference_Definitions is
      return League.Regexps.Regexp_Pattern
        is (League.Regexps.Compile (League.Strings.To_Universal_String (Text)));
 
-   Blank_Pattern : constant League.Regexps.Regexp_Pattern :=
-     League.Regexps.Compile
-       (League.Strings.To_Universal_String
-          ("^[\ \t]*$"));
+   Blank_Pattern : League.Regexps.Regexp_Pattern renames
+     Markdown.Common_Patterns.Blank_Pattern;
 
-   Link_Label : constant Wide_Wide_String :=
-       "\[[\ \t\n\v\f\r]*((\\\[|[^\]\ \t\n\v\f\r])[\ \t\n\v\f\r\>]*)+\]";
-   --    [ space        *((\  [| [^]space       ]) space          *)+ ]
-   --  Groups:           12
+   Link_Label : Wide_Wide_String renames Markdown.Common_Patterns.Link_Label;
+   --  Groups: 2
 
-   Link_Destination  : constant Wide_Wide_String :=
-     "\<[^\<\>]*\>" &
-     "|([^\<\ \\]|\\.)([^\ \\]|\\.)*";
-   --  1              2      <--  Groups
+   Link_Destination : Wide_Wide_String renames
+     Markdown.Common_Patterns.Link_Destination;
+   --  Groups: 2
 
-   Link_Title : constant Wide_Wide_String :=
-     "\""[^\""]*(\"")?" &              --  Group: 1
-     "|\'[^\']*(\')?" &                --  Group: 2
-     "|\(([^\(\)]|\\[\(\)])*(\))?";    --  Group: 3
+   Link_Title : Wide_Wide_String renames Markdown.Common_Patterns.Link_Title;
+   --  Groups: 4
 
    Label_Pattern : constant League.Regexps.Regexp_Pattern :=
      +("^\ {0,3}(" & Link_Label & ")\:" &
@@ -39,7 +33,7 @@ package body Markdown.Link_Reference_Definitions is
        "[\ \t\n\v\f\r\>]*(" & Link_Destination & "(" &
        --  Groups:       4    5,6                 7
        "[\ \t\n\v\f\r\>]+(" & Link_Title &
-       --  Groups:       8    9,10,11
+       --  Groups:       8    9,10,11,12
        "))?)?[\ \t\n\v\f\r\>]*$"
       );
 
@@ -47,12 +41,12 @@ package body Markdown.Link_Reference_Definitions is
      +("^[\ \t\n\v\f\r\>]*(" & Link_Destination & "(" &
        --  Groups:       1    2,3                 4
        "[\ \t\n\v\f\r\>]+(" & Link_Title &
-       --  Groups:       5    6,7,8
+       --  Groups:       5    6,7,8,9
        "))?)[\ \t\n\v\f\r\>]*$");
 
    Title_Pattern : constant League.Regexps.Regexp_Pattern :=
      +("^[\ \t\n\v\f\r\>]*(" & Link_Title & ")");
-   --  Groups:            1    2,3,4
+   --  Groups:            1    2,3,4,5
 
    -----------------
    -- Append_Line --
@@ -99,8 +93,7 @@ package body Markdown.Link_Reference_Definitions is
                        (Match.First_Index (5) + 1, Match.Last_Index (5)));
                end if;
             else
-               Self.URL := Line.Line.Slice
-                 (Match.First_Index (1), Match.Last_Index (1));
+               Self.URL := Match.Capture (1);
             end if;
          else
             null;  --  FIXME: Turn the block into a paragraph?
@@ -187,8 +180,7 @@ package body Markdown.Link_Reference_Definitions is
 
       return Self : Link_Reference_Definition do
 
-         Self.Label := Line.Line.Slice
-           (Match.First_Index (1), Match.Last_Index (1));
+         Self.Label := Match.Capture (1);
 
          if Has_Destination then
             if Has_Title then
@@ -215,8 +207,7 @@ package body Markdown.Link_Reference_Definitions is
                        (Match.First_Index (8) + 1, Match.Last_Index (8)));
                end if;
             else
-               Self.URL := Line.Line.Slice
-                 (Match.First_Index (4), Match.Last_Index (4));
+               Self.URL := Match.Capture (4);
             end if;
          end if;
 
