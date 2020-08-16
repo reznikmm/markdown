@@ -18,14 +18,16 @@ package Markdown.Common_Patterns is
    --    [ space        *((\  [| [^]space       ]) space          *)+ ]
    --  Groups:           12
 
-   Link_Destination  : constant Wide_Wide_String :=
-     "\<[^\<\>]*\>" &
-     "|([^\<\ \\]|\\.)([^\ \\]|\\.)*";
-   --  1              2      <--  Groups
-
    Link_Title : constant Wide_Wide_String :=
      "\""[^\""]*(\"")?" &              --  Group: 1
      "|\'[^\']*(\')?" &                --  Group: 2
      "|\(([^\(\)]|\\[\(\)])*(\))?";    --  Group: 3, 4
+
+   procedure Parse_Link_Destination
+     (Line : League.Strings.Universal_String;
+      Last : out Natural;
+      URL  : out League.Strings.Universal_String);
+   --  Parse Line ad link destination and result its length in Last if found,
+   --  or zero otherwise. Set URL to link destination stripping <> if needed.
 
 end Markdown.Common_Patterns;

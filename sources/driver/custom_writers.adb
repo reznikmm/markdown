@@ -3,23 +3,25 @@
 --  SPDX-License-Identifier: MIT
 ----------------------------------------------------------------
 
+with Ada.Strings.Unbounded;
 with Ada.Characters.Wide_Wide_Latin_1;
+with Ada.Integer_Text_IO;
 
 package body Custom_Writers is
 
    New_Line : constant Wide_Wide_String :=
      (1 => Ada.Characters.Wide_Wide_Latin_1.LF);
 
-   Amp_Entity_Reference  : constant League.Strings.Universal_String
-     := League.Strings.To_Universal_String ("&amp;");
---     Apos_Entity_Reference : constant League.Strings.Universal_String
---       := League.Strings.To_Universal_String ("&apos;");
-   Quot_Entity_Reference : constant League.Strings.Universal_String
-     := League.Strings.To_Universal_String ("&quot;");
-   Gt_Entity_Reference   : constant League.Strings.Universal_String
-     := League.Strings.To_Universal_String ("&gt;");
-   Lt_Entity_Reference   : constant League.Strings.Universal_String
-     := League.Strings.To_Universal_String ("&lt;");
+   Amp_Entity_Reference  : constant String
+     := "&amp;";
+--     Apos_Entity_Reference : constant String
+--       := "&apos;";
+   Quot_Entity_Reference : constant String
+     := "&quot;";
+   Gt_Entity_Reference   : constant String
+     := "&gt;";
+   Lt_Entity_Reference   : constant String
+     := "&lt;";
 
    procedure Close_Tag (Self : in out Writer'Class);
 
@@ -41,7 +43,7 @@ package body Custom_Writers is
       pragma Unreferenced (Success);
    begin
       Self.Close_Tag;
-      Self.Output.Put (Escape (Text, True));
+      Self.Output.Put (Escape (Text, False));
    end Characters;
 
    ---------------
@@ -71,7 +73,7 @@ package body Custom_Writers is
       use type League.Strings.Universal_String;
    begin
       if Self.Tag = Local_Name and then
-        Self.Tag.To_Wide_Wide_String not in "code" | "html" and then
+        Self.Tag.To_Wide_Wide_String not in "code" | "html" | "a" and then
         (Self.Tag.Length = 1 or else
            Self.Tag (2).To_Wide_Wide_Character not in '1' .. '9')
       then
@@ -108,67 +110,62 @@ package body Custom_Writers is
      Escape_All : Boolean := False)
        return League.Strings.Universal_String
    is
-      use type League.Strings.Universal_String;
-      Code : Wide_Wide_Character;
+      UTF_8 : constant String := Text.To_UTF_8_String;
+      Result : Ada.Strings.Unbounded.Unbounded_String;
 
    begin
-      return Result : League.Strings.Universal_String do
-         for J in 1 .. Text.Length loop
-            Code := Text.Element (J).To_Wide_Wide_Character;
+      for Code of UTF_8 loop
+         case Code is
+            when '&' =>
+               Ada.Strings.Unbounded.Append (Result, Amp_Entity_Reference);
 
-            case Code is
-               when '&' =>
-                  Result.Append (Amp_Entity_Reference);
+            when '"' =>
+               if Escape_All then
+                  Ada.Strings.Unbounded.Append (Result, "%22");
+               else
+                  Ada.Strings.Unbounded.Append (Result, Quot_Entity_Reference);
+               end if;
 
---                 when ''' =>
---                    if Escape_All then
---                       Result.Append (Apos_Entity_Reference);
---                    else
---                   Result.Append (Text.Element (J).To_Wide_Wide_Character);
---                    end if;
+            when '>' =>
+               Ada.Strings.Unbounded.Append (Result, Gt_Entity_Reference);
 
-               when '"' =>
-                  if Escape_All then
-                     Result.Append (Quot_Entity_Reference);
-                  else
-                     Result.Append (Text.Element (J).To_Wide_Wide_Character);
-                  end if;
+            when '<' =>
+               Ada.Strings.Unbounded.Append (Result, Lt_Entity_Reference);
 
-               when '>' =>
-                  if Escape_All then
-                     Result.Append (Gt_Entity_Reference);
-                  else
-                     Result.Append (Text.Element (J).To_Wide_Wide_Character);
-                  end if;
+            when 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' |
+               '-' | '_' | '.' | '~' | '/' |
+               '(' | ')' | '#' | '?' | '=' | ':'
+               =>
 
-               when '<' =>
-                  Result.Append (Lt_Entity_Reference);
+               Ada.Strings.Unbounded.Append (Result, Code);
 
-               when others =>
+            when others =>
 
-                  if Wide_Wide_Character'Pos (Code) in 16#1#  .. 16#8#
-                       | 16#B#  .. 16#C#
-                       | 16#E#  .. 16#1F#
-                       | 16#7F# .. 16#84#
-                       | 16#86# .. 16#9F#
-                  then
-                     declare
-                        Image : constant Wide_Wide_String :=
-                          Integer'Wide_Wide_Image
-                            (Wide_Wide_Character'Pos (Code));
+               if Escape_All or
+                 Character'Pos (Code) in 16#1#  .. 16#8#
+               | 16#B#  .. 16#C#
+               | 16#E#  .. 16#1F#
+               | 16#7F#
+               then
+                  declare
+                     Image : String (1 .. 7);  --  -#16#xx#
 
-                     begin
-                        Result := Result
-                          & "&#"
-                          & Image (Image'First + 1 .. Image'Last)
-                          & ";";
-                     end;
-                  else
-                     Result.Append (Text.Element (J).To_Wide_Wide_Character);
-                  end if;
-            end case;
-         end loop;
-      end return;
+                  begin
+                     Ada.Integer_Text_IO.Put
+                       (To   => Image,
+                        Item => Character'Pos (Code),
+                        Base => 16);
+                     Ada.Strings.Unbounded.Append (Result, "%");
+                     Ada.Strings.Unbounded.Append (Result, Image (5 .. 6));
+                  end;
+               else
+                  Ada.Strings.Unbounded.Append (Result, Code);
+               end if;
+         end case;
+      end loop;
+
+      return League.Strings.From_UTF_8_String
+        (Ada.Strings.Unbounded.To_String (Result));
    end Escape;
 
    ----------------------------
@@ -207,7 +204,15 @@ package body Custom_Writers is
          Self.Output.Put (" ");
          Self.Output.Put (Attributes.Local_Name (J));
          Self.Output.Put ("=""");
-         Self.Output.Put (Attributes.Value (J));
+
+         if Attributes.Local_Name (J).To_Wide_Wide_String = "href" then
+            Self.Output.Put (Escape (Attributes.Value (J), True));
+         elsif Attributes.Local_Name (J).To_Wide_Wide_String = "class" then
+            Self.Output.Put (Attributes.Value (J));
+         else
+            Self.Output.Put (Escape (Attributes.Value (J), False));
+         end if;
+
          Self.Output.Put ("""");
       end loop;
 

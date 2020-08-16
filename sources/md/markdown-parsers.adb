@@ -197,7 +197,7 @@ package body Markdown.Parsers is
    is
       pragma Unreferenced (Self);
       List : constant League.String_Vectors.Universal_String_Vector :=
-        Label.To_Simple_Casefold.Split (' ', League.Strings.Skip_Empty);
+        Label.To_Casefold.Split (' ', League.Strings.Skip_Empty);
    begin
       return List.Join (" ");
    end Normalize_Link_Label;

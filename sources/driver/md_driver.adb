@@ -285,7 +285,7 @@ procedure MD_Driver is
             Limit : Natural) is
          begin
             while From <= Text.Count and then
-              Text.Annotation (From).From <= Limit
+              Text.Annotation (From).To <= Limit
             loop
                declare
                   Item : constant Markdown.Inline_Parsers.Annotation :=

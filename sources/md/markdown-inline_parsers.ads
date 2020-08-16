@@ -15,9 +15,9 @@ package Markdown.Inline_Parsers is
 
    type Annotation (Kind : Annotation_Kind := Annotation_Kind'First) is record
       From : Positive;
+      To   : Natural;
       case Kind is
          when Emphasis | Strong | Link =>
-            To : Positive;
 
             case Kind is
                when Link =>

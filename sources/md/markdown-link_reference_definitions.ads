@@ -47,6 +47,7 @@ private
 
    type Link_Reference_Definition is new Markdown.Blocks.Block with record
       Has_Title : Boolean := False;  --  Link has a complete title
+      Has_URL   : Boolean := False;  --  Link has a link destination
       Start     : Wide_Wide_Character;
       Label     : League.Strings.Universal_String;
       URL       : League.Strings.Universal_String;

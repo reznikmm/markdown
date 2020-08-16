@@ -18,19 +18,24 @@ package body Markdown.Inline_Parsers is
      return League.Regexps.Regexp_Pattern
        is (League.Regexps.Compile (League.Strings.To_Universal_String (Text)));
 
-   Link_Destination : Wide_Wide_String renames
-     Markdown.Common_Patterns.Link_Destination;
-   --  Groups: 2
-
    Link_Title : Wide_Wide_String renames Markdown.Common_Patterns.Link_Title;
    --  Groups: 4
 
-   Link_Pattern : constant League.Regexps.Regexp_Pattern :=
-     +("^\([\ \t\n\v\f\r\>]*(" & Link_Destination & ")?(" &
-       --  Groups:          1    2,3                 1 4
-       "[\ \t\n\v\f\r\>]+(" & Link_Title &
-       --  Groups:       5    6,7,8,9
-       "))?[\ \t\n\v\f\r\>]*(\))?");
+   Link_Start_Pattern : constant League.Regexps.Regexp_Pattern :=
+     +("^\([\ \t\n\v\f\r\>]*");
+
+   Title_Pattern : constant League.Regexps.Regexp_Pattern :=
+     +("^[\ \t\n\v\f\r\>]*(" & Link_Title & ")?([\ \t\n\v\f\r\>]*\))?");
+   --  Groups:            1    2,3,4,5         6
+
+   Title_Close_Group : constant array (Positive range 1 .. 3) of Positive :=
+     (2, 3, 5);  --  Close title group numbers
+
+--       & Link_Destination & ")?(" &
+--         --  Groups:          1    2,3                 1 4
+--         "[\ \t\n\v\f\r\>]+(" & Link_Title &
+--         --  Groups:       5    6,7,8,9
+--         "))?[\ \t\n\v\f\r\>]*(\))?");
    --   54                  10 10
 
    type Position is record
@@ -195,7 +200,6 @@ package body Markdown.Inline_Parsers is
                   Given_Kind : Delimiter_Kind;
                when Emphasis_Open =>
                   Emphasis : Emphasis_Kind;
-                  Count    : Positive;
             end case;
          end record;
 
@@ -206,26 +210,16 @@ package body Markdown.Inline_Parsers is
          To     : Extended_Delimiter_Index := Delimiter_Index'Last)
          return Delimiter_Iterator_Interfaces.Reversible_Iterator'Class;
 
-      procedure Item_Not_Found
-        (Self     : in out Delimiter_List'Class;
-         Emphasis : Emphasis_Kind;
-         Count    : Positive;
-         Index    : Delimiter_Index);
-
       procedure Append
         (Self : in out Delimiter_List'Class;
          Item : Delimiter);
 
    private
-      type X is array (Emphasis_Kind, Natural range 0 .. 2) of
-        Extended_Delimiter_Index;
-
       package Delimiter_Vectors is new Ada.Containers.Vectors
         (Delimiter_Index, Delimiter);
 
       type Delimiter_List is tagged record
          Data : Delimiter_Vectors.Vector;
-         Openers_Bottom : X := (others => (others => 0));
       end record;
    end Delimiter_Lists;
 
@@ -267,15 +261,6 @@ package body Markdown.Inline_Parsers is
          Item : Delimiter) is
       begin
          Self.Data.Append (Item);
-
-         if Item.Kind in Emphasis_Kind
-           and then Item.Can_Open
-           and then Self.Openers_Bottom
-             (Item.Kind, Item.Count mod 3) = 0
-         then
-            Self.Openers_Bottom (Item.Kind, Item.Count mod 3) :=
-              Self.Data.Last_Index;
-         end if;
       end Append;
 
       -----------
@@ -321,17 +306,9 @@ package body Markdown.Inline_Parsers is
          Filter : Delimiter_Filter := (Kind => Any_Element);
          From   : Delimiter_Index := 1;
          To     : Extended_Delimiter_Index := Delimiter_Index'Last)
-         return Delimiter_Iterator_Interfaces.Reversible_Iterator'Class
-      is
-         Start : Delimiter_Index := From;
+         return Delimiter_Iterator_Interfaces.Reversible_Iterator'Class is
       begin
-         if Filter.Kind = Emphasis_Open then
-            Start := Delimiter_Index'Max
-              (From,
-               Self.Openers_Bottom (Filter.Emphasis, Filter.Count mod 3));
-         end if;
-
-         return Iterator'(Self'Access, Filter, Start,
+         return Iterator'(Self'Access, Filter, From,
                           Delimiter_Index'Min (To, Self.Data.Last_Index));
       end Each;
 
@@ -354,19 +331,6 @@ package body Markdown.Inline_Parsers is
       function Iterate (Self : aliased Delimiter_List'Class)
         return Delimiter_Iterator_Interfaces.Reversible_Iterator'Class
           is (Self.Each);
-
-      --------------------
-      -- Item_Not_Found --
-      --------------------
-
-      procedure Item_Not_Found
-        (Self     : in out Delimiter_List'Class;
-         Emphasis : Emphasis_Kind;
-         Count    : Positive;
-         Index    : Delimiter_Index) is
-      begin
-         Self.Openers_Bottom (Emphasis, Count mod 3) := Index;
-      end Item_Not_Found;
 
       overriding function Last
         (Self : Iterator) return Extended_Delimiter_Index is
@@ -422,7 +386,9 @@ package body Markdown.Inline_Parsers is
    procedure Process_Emphasis
      (DL     : in out Delimiter_Lists.Delimiter_List;
       Markup : out Markup_Vectors.Vector;
-      Bottom : Delimiter_Lists.Delimiter_Index := 1);
+      From   : Delimiter_Lists.Delimiter_Index := 1;
+      To     : Delimiter_Lists.Delimiter_Index :=
+        Delimiter_Lists.Delimiter_Index'Last);
 
    procedure Process_Links
      (Register : Markdown.Link_Registers.Link_Register'Class;
@@ -478,57 +444,72 @@ package body Markdown.Inline_Parsers is
          To    : in out Position;
          Ok    : out Boolean)
       is
---         Start : Wide_Wide_Character;  --  Title quote character
-         Skip  : constant Positive := From.Column;
-
-         Line  : constant League.Strings.Universal_String :=
+         Start : Wide_Wide_Character;  --  Title quote character
+         pragma Unreferenced (Start);
+         Skip  : Positive := From.Column;
+         Last  : Natural;
+         Line  : League.Strings.Universal_String :=
            Text (From.Line).Tail_From (Skip + 1);
 
-         Link_Match : constant League.Regexps.Regexp_Match :=
-           Link_Pattern.Find_Match (Line);
+         Match : League.Regexps.Regexp_Match :=
+           Link_Start_Pattern.Find_Match (Line);
 
-         Complete   : constant Boolean := Link_Match.Is_Matched and then
-           not Link_Match.Capture (10).Is_Empty;
-         --  We have whole inline_link matched
+         Complete   : Boolean; --  We have whole inline_link matched
+         Has_Title  : Boolean; --  Is title complete
 
-         Has_Title  : constant Boolean := Link_Match.Is_Matched and then
-           Link_Match.First_Index (4) <= Link_Match.Last_Index (4) and then
-           (for some J in 6 .. 8 =>
-              Link_Match.First_Index (J) <= Link_Match.Last_Index (J));
-         --  Is title complete
-
-         Has_URL : constant Boolean := Link_Match.Is_Matched and then
-           Link_Match.First_Index (1) <= Link_Match.Last_Index (1);
-
-         Piece : League.Strings.Universal_String;
       begin
-         if not Link_Match.Is_Matched
-           or else (not Complete and Link_Match.Last_Index /= Line.Length)
-           or else (Complete and not Has_Title)
-         then
-            Ok := False;
+         if not Match.Is_Matched then
+            Ok := False;  --  No '('
             return;
          end if;
 
-         if Has_URL  then
-            URL := Link_Match.Capture (1);
+         Skip := Skip + Match.Last_Index;
 
-            if URL.Starts_With ("<") then
-               URL := URL.Slice (2, URL.Length - 1);
-            end if;
+         Line := Line.Tail_From (Match.Last_Index + 1);  --  drop '('
+         Markdown.Common_Patterns.Parse_Link_Destination (Line, Last, URL);
+
+         if Last > 0 then
+            Skip := Skip + Last;
+            Line := Line.Tail_From (Last + 1);  --  drop link destination
          end if;
 
-         Piece := Link_Match.Capture (5);
+         Match := Title_Pattern.Find_Match (Line);
+         Complete := Match.Last_Index (6) >= Match.First_Index (6);
+
+         if not Complete and Match.Last_Index /= Line.Length then
+            Ok := False;  --  unmatched text before ')'
+            return;
+         elsif Last > 0
+           and Match.Last_Index (1) >= Match.First_Index (1)
+           and Match.First_Index (1) = 1
+         then
+            Ok := False;  --  No space between destinationa and title
+            return;
+         end if;
+
+         Has_Title :=
+           (for some J of Title_Close_Group =>
+              Match.Last_Index (J) >= Match.First_Index (J));
+
+         Line := Match.Capture (1);
+
+         if Has_Title then
+            Title.Append (Line.Slice (2, Line.Length - 1));
+         elsif not Line.Is_Empty then
+            if Complete then
+               Ok := False;  --  No closing ', " or ')' in link title
+               return;
+            end if;
+
+            Start := Line (1).To_Wide_Wide_Character;
+            Title.Append (Line.Tail_From (2));
+         end if;
 
          if Complete then
-            Title.Append (Piece.Slice (2, Piece.Length - 1));
-            To.Column := Skip + Link_Match.Last_Index;
+            To.Column := Skip + Match.Last_Index;
             Ok := True;
             return;
-         elsif Has_Title then
-            Title.Append (Piece.Slice (2, Piece.Length));
          end if;
-
 --           for J in To.Line + 1 .. Text.Length loop
 --              Line := Text (J);
 --           end loop;
@@ -577,19 +558,25 @@ package body Markdown.Inline_Parsers is
    procedure Process_Emphasis
      (DL     : in out Delimiter_Lists.Delimiter_List;
       Markup : out Markup_Vectors.Vector;
-      Bottom : Delimiter_Lists.Delimiter_Index := 1)
+      From   : Delimiter_Lists.Delimiter_Index := 1;
+      To     : Delimiter_Lists.Delimiter_Index :=
+        Delimiter_Lists.Delimiter_Index'Last)
    is
       use Delimiter_Lists;
+      Openers_Bottom : array (Emphasis_Kind, Natural range 0 .. 2) of
+        Extended_Delimiter_Index := (others => (others => 0));
    begin
-      for J in DL.Each ((Kind => Emphasis_Close), From => Bottom) loop
+      for J in DL.Each ((Kind => Emphasis_Close), From, To) loop
          declare
             Closer : Delimiter renames DL (J);
             Found  : Boolean := False;
          begin
             Each_Open_Emphasis :
             for K in reverse DL.Each
-              ((Emphasis_Open, Closer.Kind, Closer.Count),
-               From => Bottom,
+              ((Emphasis_Open, Closer.Kind),
+               From => Delimiter_Index'Max
+                 (From,
+                  Openers_Bottom (Closer.Kind, Closer.Count mod 3)),
                To   => J - 1)
             loop
                declare
@@ -641,7 +628,11 @@ package body Markdown.Inline_Parsers is
             end loop Each_Open_Emphasis;
 
             if not Found then
-               DL.Item_Not_Found (Closer.Kind, Closer.Count, J);
+               if not Closer.Can_Open then
+                  Closer.Is_Deleted := True;
+               end if;
+
+               Openers_Bottom (Closer.Kind, Closer.Count mod 3) := J;
             end if;
          end;
       end loop;
@@ -686,7 +677,7 @@ package body Markdown.Inline_Parsers is
                         URL,
                         Title));
 
-                     Process_Emphasis (DL, Markup, K + 1); --  , J - 1);
+                     Process_Emphasis (DL, Markup, K + 1, J - 1);
 
                      for M in DL.Each
                        ((Kind_Of, '['),
@@ -1049,7 +1040,8 @@ package body Markdown.Inline_Parsers is
          if Cursor.Line <= Text.Length and Cursor.Column = 1 then
             Plain_Text.Append (' ');
             Last := Last + 1;
-            Annotation (Last) := (Soft_Line_Break, Plain_Text.Length);
+            Annotation (Last) :=
+              (Soft_Line_Break, Plain_Text.Length, Plain_Text.Length);
          end if;
       end loop;
 
