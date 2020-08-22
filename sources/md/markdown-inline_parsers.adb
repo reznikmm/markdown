@@ -40,11 +40,147 @@ package body Markdown.Inline_Parsers is
 
    type Position is record
       Line   : Positive;
-      Column : Positive;
+      Column : Natural;
    end record;
 
    function "+" (Cursor : Position; Value : Integer) return Position is
      ((Cursor.Line, Cursor.Column + Value));
+
+   function "<" (Left, Right : Position) return Boolean is
+     (Left.Line < Right.Line or
+       (Left.Line = Right.Line and Left.Column < Right.Column));
+
+   function "<=" (Left, Right : Position) return Boolean is
+     (Left < Right or Left = Right);
+
+   function ">" (Left, Right : Position) return Boolean is
+     (Left.Line > Right.Line or
+       (Left.Line = Right.Line and Left.Column > Right.Column));
+
+   package Plain_Texts is
+      type Plain_Text is tagged limited private;
+
+      procedure Initialize
+        (Self : in out Plain_Text'Class;
+         Text : League.String_Vectors.Universal_String_Vector;
+         From : Position := (1, 1);
+         To   : Position := (Positive'Last, Positive'Last));
+
+      function First (Self : Plain_Text'Class) return Position;
+      function Last (Self : Plain_Text'Class) return Position;
+      function Line
+        (Self : Plain_Text'Class;
+         From : Position) return League.Strings.Universal_String;
+      function Line
+        (Self  : Plain_Text'Class;
+         Index : Positive) return League.Strings.Universal_String;
+      function Lines (Self  : Plain_Text'Class) return Positive;
+      procedure Step
+        (Self   : Plain_Text'Class;
+         Value  : Natural;
+         Cursor : in out Position);
+
+   private
+      type Plain_Text is tagged limited record
+         Data : League.String_Vectors.Universal_String_Vector;
+         From : Position;
+         To   : Position;
+      end record;
+   end Plain_Texts;
+
+   package body Plain_Texts is
+
+      function First (Self : Plain_Text'Class) return Position is (Self.From);
+
+      procedure Initialize
+        (Self : in out Plain_Text'Class;
+         Text : League.String_Vectors.Universal_String_Vector;
+         From : Position := (1, 1);
+         To   : Position := (Positive'Last, Positive'Last)) is
+      begin
+         Self.Data := Text;
+         Self.From := From;
+
+         if To.Line > Text.Length then
+            Self.To := (Text.Length, Text (Text.Length).Length);
+         else
+            Self.To := To;
+         end if;
+      end Initialize;
+
+      function Last (Self : Plain_Text'Class) return Position is (Self.To);
+
+      function Line
+        (Self  : Plain_Text'Class;
+         Index : Positive) return League.Strings.Universal_String
+      is
+         use type League.Strings.Universal_String;
+
+         function Space (Count : Positive)
+           return League.Strings.Universal_String;
+
+         -----------
+         -- Space --
+         -----------
+
+         function Space (Count : Positive)
+           return League.Strings.Universal_String
+         is
+            Blank : constant Wide_Wide_String (1 .. 80) := (others => ' ');
+         begin
+            if Count <= Blank'Last then
+               return League.Strings.To_Universal_String (Blank (1 .. Count));
+            else
+               return Blank & Space (Count - Blank'Last);
+            end if;
+         end Space;
+
+         Result : League.Strings.Universal_String := Self.Data (Index);
+      begin
+         if Index = Self.From.Line and Self.From.Column > 1 then
+            Result := Space (Self.From.Column - 1) &
+              Result.Tail_From (Self.From.Column);
+         end if;
+
+         if Index = Self.To.Line and Self.To.Column < Result.Length then
+            Result := Result.Head_To (Self.To.Column);
+         end if;
+
+         return Result;
+      end Line;
+
+      ----------
+      -- Line --
+      ----------
+
+      function Line
+        (Self : Plain_Text'Class;
+         From : Position) return League.Strings.Universal_String is
+      begin
+         return Self.Data (From.Line).Tail_From (From.Column);
+      end Line;
+
+      function Lines (Self  : Plain_Text'Class) return Positive is
+      begin
+         return Self.To.Line - Self.From.Line + 1;
+      end Lines;
+
+      procedure Step
+        (Self   : Plain_Text'Class;
+         Value  : Natural;
+         Cursor : in out Position)
+      is
+         Line : League.Strings.Universal_String renames
+           Self.Data (Cursor.Line);
+      begin
+         if Cursor.Column + Value > Line.Length then
+            Cursor := (Cursor.Line + 1, 1);
+         else
+            Cursor.Column := Cursor.Column + Value;
+         end if;
+      end Step;
+
+   end Plain_Texts;
 
    type Delimiter_Kind is ('*', '_', '[', ']');
 
@@ -87,7 +223,7 @@ package body Markdown.Inline_Parsers is
 
    procedure Find_Markup
      (Register : Markdown.Link_Registers.Link_Register'Class;
-      Text     : League.String_Vectors.Universal_String_Vector;
+      Text     : Plain_Texts.Plain_Text;
       Markup   : out Markup_Vectors.Vector);
 
    type Scanner_State is record
@@ -96,19 +232,19 @@ package body Markdown.Inline_Parsers is
    end record;
 
    procedure Read_Delimiter
-     (Text         : League.String_Vectors.Universal_String_Vector;
+     (Text         : Plain_Texts.Plain_Text;
       Cursor       : in out Position;
       State        : in out Scanner_State;
       Item         : out Delimiter;
       Is_Delimiter : out Boolean);
 
    procedure Read_Character
-     (Text   : League.String_Vectors.Universal_String_Vector;
+     (Text   : Plain_Texts.Plain_Text;
       Cursor : in out Position;
       Result : in out League.Strings.Universal_String);
 
    function Get_State
-     (Text   : League.String_Vectors.Universal_String_Vector;
+     (Text   : Plain_Texts.Plain_Text;
       Cursor : Position) return Scanner_State;
 
    function To_Annotation
@@ -116,13 +252,8 @@ package body Markdown.Inline_Parsers is
       Pos  : Positive) return Annotation;
 
    function To_Annotated_Text
-     (Text   : League.String_Vectors.Universal_String_Vector;
+     (Text   : Plain_Texts.Plain_Text;
       Markup : Markup_Vectors.Vector) return Annotated_Text;
-
-   procedure Step
-     (Text   : League.String_Vectors.Universal_String_Vector;
-      Value  : Natural;
-      Cursor : in out Position);
 
    function Count_Character
      (Line : League.Strings.Universal_String;
@@ -392,14 +523,14 @@ package body Markdown.Inline_Parsers is
 
    procedure Process_Links
      (Register : Markdown.Link_Registers.Link_Register'Class;
-      Text     : League.String_Vectors.Universal_String_Vector;
+      Text     : Plain_Texts.Plain_Text;
       DL       : in out Delimiter_Lists.Delimiter_List;
       Markup   : out Markup_Vectors.Vector;
       Bottom   : Delimiter_Lists.Delimiter_Index := 1);
 
    procedure Parse_Link_Ahead
      (Register : Markdown.Link_Registers.Link_Register'Class;
-      Text     : League.String_Vectors.Universal_String_Vector;
+      Text     : Plain_Texts.Plain_Text;
       DL       : in out Delimiter_Lists.Delimiter_List;
       Open     : Delimiter_Lists.Delimiter_Index;
       Close    : Delimiter_Lists.Delimiter_Index;
@@ -413,7 +544,7 @@ package body Markdown.Inline_Parsers is
 
    procedure Parse_Link_Ahead
      (Register : Markdown.Link_Registers.Link_Register'Class;
-      Text     : League.String_Vectors.Universal_String_Vector;
+      Text     : Plain_Texts.Plain_Text;
       DL       : in out Delimiter_Lists.Delimiter_List;
       Open     : Delimiter_Lists.Delimiter_Index;
       Close    : Delimiter_Lists.Delimiter_Index;
@@ -422,14 +553,14 @@ package body Markdown.Inline_Parsers is
       Ok       : out Boolean)
    is
       procedure To_Link_Label
-        (Text  : League.String_Vectors.Universal_String_Vector;
+        (Text  : Plain_Texts.Plain_Text;
          Open  : Position;
          Close : Position;
          Label : out League.Strings.Universal_String;
          Ok    : out Boolean);
 
       procedure To_Inline_Link
-        (Text  : League.String_Vectors.Universal_String_Vector;
+        (Text  : Plain_Texts.Plain_Text;
          From  : Position;
          To    : in out Position;
          Ok    : out Boolean);
@@ -439,7 +570,7 @@ package body Markdown.Inline_Parsers is
       --------------------
 
       procedure To_Inline_Link
-        (Text  : League.String_Vectors.Universal_String_Vector;
+        (Text  : Plain_Texts.Plain_Text;
          From  : Position;
          To    : in out Position;
          Ok    : out Boolean)
@@ -449,7 +580,7 @@ package body Markdown.Inline_Parsers is
          Skip  : Positive := From.Column;
          Last  : Natural;
          Line  : League.Strings.Universal_String :=
-           Text (From.Line).Tail_From (Skip + 1);
+           Text.Line ((From.Line, Skip + 1));
 
          Match : League.Regexps.Regexp_Match :=
            Link_Start_Pattern.Find_Match (Line);
@@ -522,13 +653,14 @@ package body Markdown.Inline_Parsers is
       -------------------
 
       procedure To_Link_Label
-        (Text  : League.String_Vectors.Universal_String_Vector;
+        (Text  : Plain_Texts.Plain_Text;
          Open  : Position;
          Close : Position;
          Label : out League.Strings.Universal_String;
          Ok    : out Boolean)
       is
-         Line : League.Strings.Universal_String renames Text (Open.Line);
+         Line : constant League.Strings.Universal_String :=
+           Text.Line (Open.Line);
       begin
          if Open.Line = Close.Line then
             Label := Line.Slice (Open.Column, Close.Column);
@@ -644,7 +776,7 @@ package body Markdown.Inline_Parsers is
 
    procedure Process_Links
      (Register : Markdown.Link_Registers.Link_Register'Class;
-      Text     : League.String_Vectors.Universal_String_Vector;
+      Text     : Plain_Texts.Plain_Text;
       DL       : in out Delimiter_Lists.Delimiter_List;
       Markup   : out Markup_Vectors.Vector;
       Bottom   : Delimiter_Lists.Delimiter_Index := 1)
@@ -701,16 +833,16 @@ package body Markdown.Inline_Parsers is
 
    procedure Find_Markup
      (Register : Markdown.Link_Registers.Link_Register'Class;
-      Text     : League.String_Vectors.Universal_String_Vector;
+      Text     : Plain_Texts.Plain_Text;
       Markup   : out Markup_Vectors.Vector)
    is
       State        : Scanner_State;
       List         : Delimiter_Lists.Delimiter_List;
-      Cursor       : Position := (1, 1);
+      Cursor       : Position := Text.First;
       Item         : Delimiter;
       Is_Delimiter : Boolean;
    begin
-      while Cursor.Line <= Text.Length loop
+      while Cursor <= Text.Last loop
          Read_Delimiter (Text, Cursor, State, Item, Is_Delimiter);
 
          if Is_Delimiter then
@@ -727,18 +859,18 @@ package body Markdown.Inline_Parsers is
    ---------------
 
    function Get_State
-     (Text   : League.String_Vectors.Universal_String_Vector;
+     (Text   : Plain_Texts.Plain_Text;
       Cursor : Position) return Scanner_State
    is
       Line : League.Strings.Universal_String;
       --  FIXME: use Zs and Pc, Pd, Pe, Pf, Pi, Po, or Ps
    begin
-      if Cursor.Line > Text.Length
-        or else Text (Cursor.Line).Is_Empty
+      if Cursor > Text.Last
+        or else Text.Line (Cursor.Line).Is_Empty
       then
          return (Is_White_Space => True, Is_Punctuation => False);
       else
-         Line := Text (Cursor.Line);
+         Line := Text.Line (Cursor.Line);
       end if;
 
       if Line (Cursor.Column).To_Wide_Wide_Character in ' ' then
@@ -760,12 +892,13 @@ package body Markdown.Inline_Parsers is
 
    function Parse
      (Register : Markdown.Link_Registers.Link_Register'Class;
-      Text     : League.String_Vectors.Universal_String_Vector)
+      Lines    : League.String_Vectors.Universal_String_Vector)
         return Annotated_Text
    is
       Markup : Markup_Vectors.Vector;
-
+      Text   : Plain_Texts.Plain_Text;
    begin
+      Text.Initialize (Lines);
       Find_Markup (Register, Text, Markup);
 
       return To_Annotated_Text (Text, Markup);
@@ -777,31 +910,32 @@ package body Markdown.Inline_Parsers is
    --------------------
 
    procedure Read_Character
-     (Text   : League.String_Vectors.Universal_String_Vector;
+     (Text   : Plain_Texts.Plain_Text;
       Cursor : in out Position;
       Result : in out League.Strings.Universal_String)
    is
-      Line : League.Strings.Universal_String renames Text (Cursor.Line);
+      Line : constant League.Strings.Universal_String :=
+        Text.Line (Cursor.Line);
    begin
       if Line.Is_Empty then
-         Step (Text, 1, Cursor);
+         Text.Step (1, Cursor);
          return;
       end if;
 
       case Line (Cursor.Column).To_Wide_Wide_Character is
          when '\' =>
-            Step (Text, 1, Cursor);
-            if Cursor.Line > Text.Length then
+            Text.Step (1, Cursor);
+            if Cursor > Text.Last then
                Result.Append ('\');
             elsif Get_State (Text, Cursor).Is_Punctuation then
                Result.Append (Line (Cursor.Column));
-               Step (Text, 1, Cursor);
+               Text.Step (1, Cursor);
             else
                Result.Append ('\');
             end if;
          when others =>
             Result.Append (Line (Cursor.Column));
-            Step (Text, 1, Cursor);
+            Text.Step (1, Cursor);
       end case;
    end Read_Character;
 
@@ -810,7 +944,7 @@ package body Markdown.Inline_Parsers is
    --------------------
 
    procedure Read_Delimiter
-     (Text         : League.String_Vectors.Universal_String_Vector;
+     (Text         : Plain_Texts.Plain_Text;
       Cursor       : in out Position;
       State        : in out Scanner_State;
       Item         : out Delimiter;
@@ -831,12 +965,13 @@ package body Markdown.Inline_Parsers is
          end if;
       end Get_Follow_State;
 
-      Line   : League.Strings.Universal_String renames Text (Cursor.Line);
+      Line   : constant League.Strings.Universal_String :=
+        Text.Line (Cursor.Line);
       Follow : Scanner_State;
    begin
       if Line.Is_Empty then
          State := Get_State (Text, Cursor);
-         Step (Text, 1, Cursor);
+         Text.Step (1, Cursor);
          Is_Delimiter := False;
          return;
       end if;
@@ -850,7 +985,7 @@ package body Markdown.Inline_Parsers is
                   Count  => Count_Character (Line, Cursor.Column),
                   others => False);
             begin
-               Step (Text, Next.Count, Cursor);
+               Text.Step (Next.Count, Cursor);
                Follow := Get_Follow_State (Cursor);
 
                --  Left flanking
@@ -878,7 +1013,7 @@ package body Markdown.Inline_Parsers is
                   Count  => Count_Character (Line, Cursor.Column),
                   others => False);
             begin
-               Step (Text, Next.Count, Cursor);
+               Text.Step (Next.Count, Cursor);
                Follow := Get_Follow_State (Cursor);
 
                Left_Flanking := not Follow.Is_White_Space and then
@@ -906,7 +1041,7 @@ package body Markdown.Inline_Parsers is
             Item := (Kind       => '[',
                      From       => Cursor,
                      Is_Deleted => False);
-            Step (Text, 1, Cursor);
+            Text.Step (1, Cursor);
             Is_Delimiter := True;
 
          when ']' =>
@@ -915,16 +1050,16 @@ package body Markdown.Inline_Parsers is
                      From       => Cursor,
                      To         => Cursor,
                      Is_Deleted => False);
-            Step (Text, 1, Cursor);
+            Text.Step (1, Cursor);
             Is_Delimiter := True;
          when '\' =>
             State := Get_State (Text, Cursor);
-            Step (Text, 2, Cursor);
+            Text.Step (2, Cursor);
             Is_Delimiter := False;
 
          when others =>
             State := Get_State (Text, Cursor);
-            Step (Text, 1, Cursor);
+            Text.Step (1, Cursor);
             Is_Delimiter := False;
 
       end case;
@@ -934,30 +1069,12 @@ package body Markdown.Inline_Parsers is
       end if;
    end Read_Delimiter;
 
-   ----------
-   -- Step --
-   ----------
-
-   procedure Step
-     (Text   : League.String_Vectors.Universal_String_Vector;
-      Value  : Natural;
-      Cursor : in out Position)
-   is
-      Line : League.Strings.Universal_String renames Text (Cursor.Line);
-   begin
-      if Cursor.Column + Value > Line.Length then
-         Cursor := (Cursor.Line + 1, 1);
-      else
-         Cursor.Column := Cursor.Column + Value;
-      end if;
-   end Step;
-
    -----------------------
    -- To_Annotated_Text --
    -----------------------
 
    function To_Annotated_Text
-     (Text   : League.String_Vectors.Universal_String_Vector;
+     (Text   : Plain_Texts.Plain_Text;
       Markup : Markup_Vectors.Vector) return Annotated_Text
    is
       function Less (Left, Right : Positive) return Boolean;
@@ -998,11 +1115,11 @@ package body Markdown.Inline_Parsers is
          Less       => Less,
          Swap       => Swap);
 
-      Plain_Text : League.Strings.Universal_String;
-      Cursor     : Position := (1, 1);
+      Result     : League.Strings.Universal_String;
+      Cursor     : Position := Text.First;
       Index      : Positive := Map'First;
       Last       : Natural := 0;
-      Annotation : Annotation_Array (1 .. Map'Last / 2 + Text.Length);
+      Annotation : Annotation_Array (1 .. Map'Last / 2 + Text.Lines);
 
    begin
       for J in 1 .. Map'Last loop
@@ -1011,7 +1128,7 @@ package body Markdown.Inline_Parsers is
 
       Sort (1, Map'Last);
 
-      while Cursor.Line <= Text.Length loop
+      while Cursor <= Text.Last loop
          if Index in Map'Range and then
            Cursor = Markup (Map (Index)).From
          then
@@ -1021,31 +1138,31 @@ package body Markdown.Inline_Parsers is
                if Map (Index) mod 2 = 1 then  --  Open markup
                   Last := Last + 1;
                   Annotation (Last) := To_Annotation
-                    (Item, Plain_Text.Length + 1);
+                    (Item, Result.Length + 1);
                   Annotation_Map ((Map (Index) + 1) / 2) := Last;
                else  --  Close markup
                   Annotation
                     (Annotation_Map ((Map (Index)) / 2)).To :=
-                      Plain_Text.Length;
+                      Result.Length;
                end if;
 
-               Step (Text, Item.Length, Cursor);
+               Text.Step (Item.Length, Cursor);
 
                Index := Index + 1;
             end;
          else
-            Read_Character (Text, Cursor, Plain_Text);
+            Read_Character (Text, Cursor, Result);
          end if;
 
-         if Cursor.Line <= Text.Length and Cursor.Column = 1 then
-            Plain_Text.Append (' ');
+         if Cursor <= Text.Last and Cursor.Column = 1 then
+            Result.Append (' ');
             Last := Last + 1;
             Annotation (Last) :=
-              (Soft_Line_Break, Plain_Text.Length, Plain_Text.Length);
+              (Soft_Line_Break, Result.Length, Result.Length);
          end if;
       end loop;
 
-      return (Last, Plain_Text, Annotation (1 .. Last));
+      return (Last, Result, Annotation (1 .. Last));
    end To_Annotated_Text;
 
    -------------------

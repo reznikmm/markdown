@@ -41,7 +41,7 @@ package Markdown.Inline_Parsers is
 
    function Parse
      (Register : Markdown.Link_Registers.Link_Register'Class;
-      Text     : League.String_Vectors.Universal_String_Vector)
+      Lines    : League.String_Vectors.Universal_String_Vector)
         return Annotated_Text;
 
 end Markdown.Inline_Parsers;
