@@ -284,7 +284,7 @@ procedure MD_Driver is
             Next  : in out Positive;
             Limit : Natural) is
          begin
-            while From <= Text.Count and then
+            while From <= Text.Annotation.Last_Index and then
               Text.Annotation (From).To <= Limit
             loop
                declare
@@ -322,6 +322,15 @@ procedure MD_Driver is
                         Self.Writer.End_Element
                           (Namespace_URI => Self.Namespace,
                            Local_Name    => +"strong");
+                     when Markdown.Inline_Parsers.Code_Span =>
+                        Self.Writer.Start_Element
+                          (Namespace_URI => Self.Namespace,
+                           Local_Name    => +"code",
+                           Attributes    => Empty);
+                        Write (From, Next, Item.To);
+                        Self.Writer.End_Element
+                          (Namespace_URI => Self.Namespace,
+                           Local_Name    => +"code");
                      when Markdown.Inline_Parsers.Link =>
                         declare
                            Attr  : XML.SAX.Attributes.SAX_Attributes;
@@ -359,7 +368,7 @@ procedure MD_Driver is
          end Write;
 
          Next  : Positive := 1;  --  Position in Text,Plain_Text
-         From  : Positive := Text.Annotation'First;
+         From  : Positive := Text.Annotation.First_Index;
       begin
          Write (From, Next, Text.Plain_Text.Length);
       end Write_Annotated_Text;

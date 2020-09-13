@@ -3,6 +3,7 @@
 --  SPDX-License-Identifier: MIT
 ----------------------------------------------------------------
 
+with Ada.Containers.Vectors;
 with League.Strings;
 with League.String_Vectors;
 
@@ -11,7 +12,7 @@ with Markdown.Link_Registers;
 package Markdown.Inline_Parsers is
 
    type Annotation_Kind is
-     (Soft_Line_Break, Emphasis, Strong, Link);
+     (Soft_Line_Break, Emphasis, Strong, Link, Code_Span);
 
    type Annotation (Kind : Annotation_Kind := Annotation_Kind'First) is record
       From : Positive;
@@ -27,16 +28,17 @@ package Markdown.Inline_Parsers is
                   null;
             end case;
 
-         when Soft_Line_Break =>
+         when Soft_Line_Break | Code_Span =>
             null;
       end case;
    end record;
 
-   type Annotation_Array is array (Positive range <>) of Annotation;
+   package Annotation_Vectors is new
+     Ada.Containers.Vectors (Positive, Annotation);
 
-   type Annotated_Text (Count : Natural) is record
+   type Annotated_Text is record
       Plain_Text : League.Strings.Universal_String;
-      Annotation : Annotation_Array (1 .. Count);
+      Annotation : Annotation_Vectors.Vector;
    end record;
 
    function Parse
