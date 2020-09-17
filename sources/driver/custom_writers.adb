@@ -133,7 +133,7 @@ package body Custom_Writers is
                Ada.Strings.Unbounded.Append (Result, Lt_Entity_Reference);
 
             when 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' |
-               '-' | '_' | '.' | '~' | '/' |
+               '-' | '_' | '.' | '~' | '/' | '@' | '+' | ',' |
                '(' | ')' | '#' | '?' | '=' | ':'
                =>
 

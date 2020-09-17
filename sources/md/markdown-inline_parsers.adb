@@ -10,6 +10,7 @@ with League.Characters;
 with League.Regexps;
 
 with Markdown.Common_Patterns;
+with Markdown.Inline_Parsers.Autolinks;
 with Markdown.Inline_Parsers.Code_Spans;
 
 package body Markdown.Inline_Parsers is
@@ -226,13 +227,14 @@ package body Markdown.Inline_Parsers is
    type Inline_Parser_State is
      array (Inline_Kind range <>) of Optional_Inline_State;
 
-   Known_Inline : constant array (Inline_Kind range 1 .. 1) of access
+   Known_Inline : constant array (Inline_Kind range 1 .. 2) of access
      procedure
        (Text   : Plain_Texts.Plain_Text;
         Cursor : Position;
         State  : in out Optional_Inline_State)
      :=
-       (1 => Markdown.Inline_Parsers.Code_Spans.Find'Access);
+       (Markdown.Inline_Parsers.Code_Spans.Find'Access,
+        Markdown.Inline_Parsers.Autolinks.Find'Access);
 
    procedure Parse_Inline
      (Text   : Plain_Texts.Plain_Text;
