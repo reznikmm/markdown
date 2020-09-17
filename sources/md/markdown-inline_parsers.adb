@@ -10,6 +10,7 @@ with League.Characters;
 with League.Regexps;
 
 with Markdown.Common_Patterns;
+with Markdown.Inline_Parsers.Code_Spans;
 
 package body Markdown.Inline_Parsers is
 
@@ -29,68 +30,6 @@ package body Markdown.Inline_Parsers is
 
    Title_Close_Group : constant array (Positive range 1 .. 3) of Positive :=
      (2, 3, 5);  --  Close title group numbers
-
-   Code_Span_Start : constant League.Regexps.Regexp_Pattern :=
-     +("(\\[\`\\])*(\`+)|\\\`");
-   --   1          2
-   Code_Span_End : constant League.Regexps.Regexp_Pattern := +("\`+");
-
-   type Position is record
-      Line   : Positive;
-      Column : Natural;
-   end record;
-
-   function "+" (Cursor : Position; Value : Integer) return Position is
-     ((Cursor.Line, Cursor.Column + Value));
-
-   function "<" (Left, Right : Position) return Boolean is
-     (Left.Line < Right.Line or
-       (Left.Line = Right.Line and Left.Column < Right.Column));
-
-   function "<=" (Left, Right : Position) return Boolean is
-     (Left < Right or Left = Right);
-
-   function ">" (Left, Right : Position) return Boolean is
-     (Left.Line > Right.Line or
-       (Left.Line = Right.Line and Left.Column > Right.Column));
-
-   package Plain_Texts is
-      type Plain_Text is tagged limited private;
-
-      procedure Initialize
-        (Self : in out Plain_Text'Class;
-         Text : League.String_Vectors.Universal_String_Vector;
-         From : Position := (1, 1);
-         To   : Position := (Positive'Last, Positive'Last));
-
-      procedure Initialize
-        (Self : in out Plain_Text'Class;
-         Text : Plain_Text'Class;
-         From : Position;
-         To   : Position := (Positive'Last, Positive'Last));
-
-      function First (Self : Plain_Text'Class) return Position;
-      function Last (Self : Plain_Text'Class) return Position;
-      function Line
-        (Self : Plain_Text'Class;
-         From : Position) return League.Strings.Universal_String;
-      function Line
-        (Self  : Plain_Text'Class;
-         Index : Positive) return League.Strings.Universal_String;
-      function Lines (Self  : Plain_Text'Class) return Positive;
-      pragma Unreferenced (Lines);
-      procedure Step
-        (Self   : Plain_Text'Class;
-         Value  : Natural;
-         Cursor : in out Position);
-
-   private
-      type Plain_Text is tagged limited record
-         Data : League.String_Vectors.Universal_String_Vector;
-         From : Position;
-         To   : Position;
-      end record;
-   end Plain_Texts;
 
    package body Plain_Texts is
 
@@ -281,32 +220,29 @@ package body Markdown.Inline_Parsers is
      (Line : League.Strings.Universal_String;
       From : Positive) return Positive;
 
-   type Inline_Kind is (Code);
+   type Inline_Kind is new Positive;
    --  Top priority inline kinds.
 
-   type Inline_Span is record
-      From : Position;
-      To   : Position;
-   end record;
+   type Inline_Parser_State is
+     array (Inline_Kind range <>) of Optional_Inline_State;
 
-   type Optional_Inline_State (Is_Set : Boolean := False) is record
-      case Is_Set is
-         when True =>
-            Span  : Inline_Span;
-            Value : Annotated_Text;
-         when False =>
-            null;
-      end case;
-   end record;
-
-   type Inline_Parser_State is array (Inline_Kind) of Optional_Inline_State;
+   Known_Inline : constant array (Inline_Kind range 1 .. 1) of access
+     procedure
+       (Text   : Plain_Texts.Plain_Text;
+        Cursor : Position;
+        State  : in out Optional_Inline_State)
+     :=
+       (1 => Markdown.Inline_Parsers.Code_Spans.Find'Access);
 
    procedure Parse_Inline
      (Text   : Plain_Texts.Plain_Text;
-      Cursor : Position;
       State  : in out Inline_Parser_State;
-      Found  : in out Boolean;
-      Kind   : out Inline_Kind);
+      Result : out Optional_Inline_State);
+
+   procedure Find_All_Inlines
+     (Text   : Plain_Texts.Plain_Text;
+      Cursor : Position;
+      State  : out Inline_Parser_State);
 
    procedure Append
      (Self  : in out Annotated_Text;
@@ -610,79 +546,19 @@ package body Markdown.Inline_Parsers is
       Title    : out League.String_Vectors.Universal_String_Vector;
       Ok       : out Boolean);
 
-   procedure Parse_Code_Span
+   ----------------------
+   -- Find_All_Inlines --
+   ----------------------
+
+   procedure Find_All_Inlines
      (Text   : Plain_Texts.Plain_Text;
-      Marker : League.Strings.Universal_String;
-      Result : out League.Strings.Universal_String;
-      Found  : out Boolean;
-      Cursor : in out Position);
-
-   ---------------------
-   -- Parse_Code_Span --
-   ---------------------
-
-   procedure Parse_Code_Span
-     (Text   : Plain_Texts.Plain_Text;
-      Marker : League.Strings.Universal_String;
-      Result : out League.Strings.Universal_String;
-      Found  : out Boolean;
-      Cursor : in out Position)
-   is
-      use type League.Strings.Universal_String;
-
-      Line   : League.Strings.Universal_String := Text.Line (Cursor);
-      Offset : Natural := Cursor.Column - 1;  --  Dropped characters count
-      Index  : Positive := Cursor.Line;
+      Cursor : Position;
+      State  : out Inline_Parser_State) is
    begin
-      if Cursor.Column = 1 then
-         Result.Append (" ");
-      end if;
-
-      loop
-         declare
-            Match : constant League.Regexps.Regexp_Match :=
-              Code_Span_End.Find_Match (Line);
-         begin
-            if Match.Is_Matched then
-               if Match.Capture = Marker then
-                  Found := True;
-                  Cursor := (Index, Match.Last_Index + Offset);
-
-                  Result.Append
-                    (Line.Head_To (Match.First_Index - 1));
-
-                  if Result.Starts_With (" ")
-                    and then Result.Ends_With (" ")
-                    and then Result.Length /= Result.Count (' ')
-                  then
-                     Result := Result.Slice (2, Result.Length - 1);
-                  end if;
-
-                  return;
-               else
-                  Result.Append (Line.Head_To (Match.Last_Index));
-                  Line := Line.Tail_From (Match.Last_Index + 1);
-                  Offset := Offset + Match.Last_Index;
-               end if;
-
-            elsif Index < Text.Last.Line then
-
-               Result.Append (Line);
-               Result.Append (' ');
-               Index := Index + 1;
-               Offset := 0;
-               Line := Text.Line (Index);
-
-            else
-
-               exit;
-
-            end if;
-         end;
+      for Kind in State'Range loop
+         Known_Inline (Kind) (Text, Cursor, State (Kind));
       end loop;
-
-      Found := False;
-   end Parse_Code_Span;
+   end Find_All_Inlines;
 
    ------------------
    -- Parse_Inline --
@@ -690,73 +566,42 @@ package body Markdown.Inline_Parsers is
 
    procedure Parse_Inline
      (Text   : Plain_Texts.Plain_Text;
-      Cursor : Position;
       State  : in out Inline_Parser_State;
-      Found  : in out Boolean;
-      Kind   : out Inline_Kind)
-   is
-      Line   : League.Strings.Universal_String := Text.Line (Cursor);
-      Offset : Natural := Cursor.Column - 1;  --  Dropped characters count
-      Index  : Positive := Cursor.Line;
+      Result : out Optional_Inline_State) is
    begin
-      loop
-         declare
-            Match : constant League.Regexps.Regexp_Match :=
-              Code_Span_Start.Find_Match (Line);
-         begin
-            if not Match.Is_Matched then
+      Result := (Is_Set => False);
 
-               exit when Index = Text.Last.Line;
-
-               Index := Index + 1;
-               Offset := 0;
-               Line := Text.Line (Index);
-
-            elsif Match.Last_Index (2) < Match.First_Index (2) then
-
-               Line := Line.Tail_From (Match.Last_Index + 1);
-               Offset := Offset + Match.Last_Index;
-
+      for X of State loop
+         if X.Is_Set then
+            if Result.Is_Set then
+               if X.Span.From < Result.Span.From then
+                  Result := X;
+               end if;
             else
-               declare
-                  Marker : constant League.Strings.Universal_String :=
-                    Match.Capture (2);
-                  Result : Optional_Inline_State (True);
-               begin
-                  Result.Span.From := (Index, Match.First_Index (2) + Offset);
-                  Result.Span.To := Result.Span.From;
-                  Text.Step (Marker.Length, Result.Span.To);
-
-                  exit when Result.Span.To > Text.Last;
-
-                  Parse_Code_Span
-                    (Text,
-                     Marker => Marker,
-                     Result => Result.Value.Plain_Text,
-                     Found  => Found,
-                     Cursor => Result.Span.To);
-
-                  if Found then
-                     Result.Value.Annotation.Append
-                       ((Kind => Code_Span,
-                         From => 1,
-                         To   => Result.Value.Plain_Text.Length));
-
-                     Kind := Code;
-                     State (Kind) := Result;
-
-                     return;
-                  else
-                     Line := Line.Tail_From (Match.Last_Index + 1);
-                     Offset := Offset + Match.Last_Index;
-                  end if;
-               end;
+               Result := X;
             end if;
-         end;
+         end if;
       end loop;
 
-      State (Code) := (Is_Set => False);
-      Found := False;
+      if Result.Is_Set then
+         declare
+            Next : Position := Result.Span.To;
+         begin
+            Text.Step (1, Next);
+
+            for Kind in State'Range loop
+               if State (Kind).Is_Set
+                 and then State (Kind).Span.From <= Result.Span.To
+               then
+                  if Next <= Text.Last then
+                     Known_Inline (Kind) (Text, Next, State (Kind));
+                  else
+                     State (Kind) := (Is_Set => False);
+                  end if;
+               end if;
+            end loop;
+         end;
+      end if;
    end Parse_Inline;
 
    ----------------------
@@ -1118,34 +963,34 @@ package body Markdown.Inline_Parsers is
    is
       Result : Annotated_Text;
       Text   : Plain_Texts.Plain_Text;
-      State  : Inline_Parser_State := (others => <>);
+      State  : Inline_Parser_State := (Known_Inline'Range => <>);
       Cursor : Position;
    begin
       Text.Initialize (Lines);
       Cursor := Text.First;
+      Find_All_Inlines (Text, Cursor, State);
 
       while Cursor <= Text.Last loop
          declare
             Markup : Markup_Vectors.Vector;
-            Found  : Boolean := False;
-            Kind   : Inline_Kind := Code;
+            Value  : Optional_Inline_State;
          begin
-            Parse_Inline (Text, Cursor, State, Found, Kind);
+            Parse_Inline (Text, State, Value);
 
-            if Found then
-               if Cursor /= State (Kind).Span.From then
+            if Value.Is_Set then
+               if Cursor /= Value.Span.From then
                   declare
                      Nested : Plain_Texts.Plain_Text;
                   begin
                      Nested.Initialize
-                       (Text, Cursor, State (Kind).Span.From);
+                       (Text, Cursor, Value.Span.From);
                      Find_Markup (Register, Nested, Markup);
                      Append (Result, To_Annotated_Text (Nested, Markup));
                   end;
                end if;
 
-               Append (Result, State (Kind).Value);
-               Cursor := State (Kind).Span.To;
+               Append (Result, Value.Value);
+               Cursor := Value.Span.To;
                Text.Step (1, Cursor);
             else
                declare

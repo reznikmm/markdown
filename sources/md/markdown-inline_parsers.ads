@@ -46,4 +46,78 @@ package Markdown.Inline_Parsers is
       Lines    : League.String_Vectors.Universal_String_Vector)
         return Annotated_Text;
 
+private
+
+   type Position is record
+      Line   : Positive;
+      Column : Natural;
+   end record;
+
+   function "+" (Cursor : Position; Value : Integer) return Position is
+     ((Cursor.Line, Cursor.Column + Value));
+
+   function "<" (Left, Right : Position) return Boolean is
+     (Left.Line < Right.Line or
+       (Left.Line = Right.Line and Left.Column < Right.Column));
+
+   function "<=" (Left, Right : Position) return Boolean is
+     (Left < Right or Left = Right);
+
+   function ">" (Left, Right : Position) return Boolean is
+     (Left.Line > Right.Line or
+       (Left.Line = Right.Line and Left.Column > Right.Column));
+
+   package Plain_Texts is
+      type Plain_Text is tagged limited private;
+
+      procedure Initialize
+        (Self : in out Plain_Text'Class;
+         Text : League.String_Vectors.Universal_String_Vector;
+         From : Position := (1, 1);
+         To   : Position := (Positive'Last, Positive'Last));
+
+      procedure Initialize
+        (Self : in out Plain_Text'Class;
+         Text : Plain_Text'Class;
+         From : Position;
+         To   : Position := (Positive'Last, Positive'Last));
+
+      function First (Self : Plain_Text'Class) return Position;
+      function Last (Self : Plain_Text'Class) return Position;
+      function Line
+        (Self : Plain_Text'Class;
+         From : Position) return League.Strings.Universal_String;
+      function Line
+        (Self  : Plain_Text'Class;
+         Index : Positive) return League.Strings.Universal_String;
+      function Lines (Self  : Plain_Text'Class) return Positive;
+      pragma Unreferenced (Lines);
+      procedure Step
+        (Self   : Plain_Text'Class;
+         Value  : Natural;
+         Cursor : in out Position);
+
+   private
+      type Plain_Text is tagged limited record
+         Data : League.String_Vectors.Universal_String_Vector;
+         From : Position;
+         To   : Position;
+      end record;
+   end Plain_Texts;
+
+   type Inline_Span is record
+      From : Position;
+      To   : Position;
+   end record;
+
+   type Optional_Inline_State (Is_Set : Boolean := False) is record
+      case Is_Set is
+         when True =>
+            Span  : Inline_Span;
+            Value : Annotated_Text;
+         when False =>
+            null;
+      end case;
+   end record;
+
 end Markdown.Inline_Parsers;

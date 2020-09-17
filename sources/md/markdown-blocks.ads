@@ -3,10 +3,7 @@
 --  SPDX-License-Identifier: MIT
 ----------------------------------------------------------------
 
---  with Ada.Containers.Vectors;
-
 with League.Strings;
---  with League.String_Vectors;
 
 limited with Markdown.Visitors;
 
