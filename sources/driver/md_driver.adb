@@ -28,6 +28,10 @@ with Markdown.Visitors;
 
 procedure MD_Driver is
 
+   LF : constant Wide_Wide_Character := Ada.Characters.Wide_Wide_Latin_1.LF;
+
+   New_Line : constant Wide_Wide_String := (1 => LF);
+
    function Trim_Doctype (Text : League.Strings.Universal_String)
      return League.Strings.Universal_String;
 
@@ -277,7 +281,8 @@ procedure MD_Driver is
             Next  : in out Positive;
             Limit : Natural);
 
-         Empty : XML.SAX.Attributes.SAX_Attributes;
+         Empty : XML.SAX.Attributes.SAX_Attributes renames
+           XML.SAX.Attributes.Empty_SAX_Attributes;
 
          procedure Write
            (From  : in out Positive;
@@ -352,10 +357,48 @@ procedure MD_Driver is
                              (Namespace_URI => Self.Namespace,
                               Local_Name    => +"a");
                         end;
+                     when Markdown.Inline_Parsers.Open_HTML_Tag =>
+                        declare
+                           Attr : XML.SAX.Attributes.SAX_Attributes;
+                        begin
+                           for J of Item.Attr loop
+                              if J.Value.Is_Empty then
+                                 Attr.Set_Value
+                                   (Self.Namespace, J.Name, J.Name);
+                              else
+                                 Attr.Set_Value
+                                   (Self.Namespace, J.Name, J.Value.Join (LF));
+                              end if;
+                           end loop;
+
+                           Self.Writer.Start_Element
+                             (Namespace_URI => Self.Namespace,
+                              Local_Name    => Item.Tag,
+                              Attributes    => Attr);
+
+                           if Item.Is_Empty then
+                              Self.Writer.End_Element
+                                (Namespace_URI => Self.Namespace,
+                                 Local_Name    => Item.Tag);
+                           end if;
+                        end;
+                     when Markdown.Inline_Parsers.Close_HTML_Tag =>
+                        Self.Writer.End_Element
+                          (Namespace_URI => Self.Namespace,
+                           Local_Name    => Item.Tag);
+                     when Markdown.Inline_Parsers.HTML_Comment =>
+                        Self.Writer.Comment (Item.HTML_Comment.Join (LF));
+                     when Markdown.Inline_Parsers
+                        .HTML_Processing_Instruction =>
+                           Self.Writer.Processing_Instruction
+                             (Item.HTML_PI.Join (LF));
+                     when Markdown.Inline_Parsers.HTML_Declaration =>
+                        Self.Writer.Comment (Item.HTML_Decl.Join (LF));
+                     when Markdown.Inline_Parsers.HTML_CDATA =>
+                        Self.Writer.Start_CDATA;
+                        Self.Writer.Characters (Item.HTML_CDATA.Join (LF));
+                        Self.Writer.End_CDATA;
                   end case;
-
-                  exit when Next >= Limit;
-
                end;
             end loop;
 
@@ -382,8 +425,6 @@ procedure MD_Driver is
    function Trim_Doctype (Text : League.Strings.Universal_String)
      return League.Strings.Universal_String
    is
-      New_Line : constant Wide_Wide_String :=
-        (1 => Ada.Characters.Wide_Wide_Latin_1.LF);
       Pos : constant Positive := Text.Index (">");
       Result : League.Strings.Universal_String :=
         Text.Slice (Pos + 1, Text.Length - 8);
@@ -410,7 +451,7 @@ begin
    Parser.Register (Markdown.Paragraphs.Filter'Access);
 
    Visitor.Writer.Set_Output_Destination (Visitor.Output'Unchecked_Access);
-   Visitor.New_Line := +(1 => Ada.Characters.Wide_Wide_Latin_1.LF);
+   Visitor.New_Line := +New_Line;
    Visitor.Namespace := +"http://www.w3.org/1999/xhtml";
 
    while not Ada.Wide_Wide_Text_IO.End_Of_File loop

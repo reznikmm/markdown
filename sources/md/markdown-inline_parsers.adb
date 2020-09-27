@@ -12,6 +12,7 @@ with League.Regexps;
 with Markdown.Common_Patterns;
 with Markdown.Inline_Parsers.Autolinks;
 with Markdown.Inline_Parsers.Code_Spans;
+with Markdown.Inline_Parsers.Raw_HTML;
 
 package body Markdown.Inline_Parsers is
 
@@ -69,6 +70,32 @@ package body Markdown.Inline_Parsers is
             Self.To := (To.Line, To.Column - 1);
          end if;
       end Initialize;
+
+      function Join
+        (Self : Plain_Text'Class;
+         From : Position;
+         Char : Wide_Wide_Character) return League.Strings.Universal_String
+      is
+         Nested : Plain_Text;
+         List : League.String_Vectors.Universal_String_Vector := Self.Data;
+      begin
+         Nested.Initialize (Self, From);
+
+         if From.Line > 1 or Self.To.Line < Self.Data.Length then
+            List := List.Slice (From.Line, Self.To.Line);
+         end if;
+
+         if From.Column > 1 then
+            List.Replace (1, Nested.Line (From.Line));
+         end if;
+
+         if Self.To.Column < List (List.Length).Length then
+            List.Replace
+              (List.Length, List (List.Length).Head_To (Self.To.Column));
+         end if;
+
+         return List.Join (Char);
+      end Join;
 
       function Last (Self : Plain_Text'Class) return Position is (Self.To);
 
@@ -227,14 +254,15 @@ package body Markdown.Inline_Parsers is
    type Inline_Parser_State is
      array (Inline_Kind range <>) of Optional_Inline_State;
 
-   Known_Inline : constant array (Inline_Kind range 1 .. 2) of access
+   Known_Inline : constant array (Inline_Kind range 1 .. 3) of access
      procedure
        (Text   : Plain_Texts.Plain_Text;
         Cursor : Position;
         State  : in out Optional_Inline_State)
      :=
        (Markdown.Inline_Parsers.Code_Spans.Find'Access,
-        Markdown.Inline_Parsers.Autolinks.Find'Access);
+        Markdown.Inline_Parsers.Autolinks.Find'Access,
+        Markdown.Inline_Parsers.Raw_HTML.Find'Access);
 
    procedure Parse_Inline
      (Text   : Plain_Texts.Plain_Text;

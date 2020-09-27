@@ -43,7 +43,12 @@ package body Custom_Writers is
       pragma Unreferenced (Success);
    begin
       Self.Close_Tag;
-      Self.Output.Put (Escape (Text, False));
+
+      if Self.CDATA then
+         Self.Output.Put (Text);
+      else
+         Self.Output.Put (Escape (Text, False));
+      end if;
    end Characters;
 
    ---------------
@@ -57,6 +62,36 @@ package body Custom_Writers is
          Self.Tag.Clear;
       end if;
    end Close_Tag;
+
+   -------------
+   -- Comment --
+   -------------
+
+   overriding procedure Comment
+    (Self    : in out Writer;
+     Text    : League.Strings.Universal_String;
+     Success : in out Boolean)
+   is
+      pragma Unreferenced (Success);
+   begin
+      Self.Output.Put ("<!--");
+      Self.Output.Put (Text);
+      Self.Output.Put ("-->");
+   end Comment;
+
+   ---------------
+   -- End_CDATA --
+   ---------------
+
+   overriding procedure End_CDATA
+    (Self    : in out Writer;
+     Success : in out Boolean)
+   is
+      pragma Unreferenced (Success);
+   begin
+      Self.CDATA := False;
+      Self.Output.Put ("]]>");
+   end End_CDATA;
 
    -----------------
    -- End_Element --
@@ -134,10 +169,17 @@ package body Custom_Writers is
 
             when 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' |
                '-' | '_' | '.' | '~' | '/' | '@' | '+' | ',' |
-               '(' | ')' | '#' | '?' | '=' | ':'
+               '(' | ')' | '#' | '?' | '=' | ':' | '*'
                =>
 
                Ada.Strings.Unbounded.Append (Result, Code);
+
+--              when '\' =>
+--                 if Escape_All then
+--                    Ada.Strings.Unbounded.Append (Result, "%5C");
+--                 else
+--                    Ada.Strings.Unbounded.Append (Result, Code);
+--                 end if;
 
             when others =>
 
@@ -168,6 +210,23 @@ package body Custom_Writers is
         (Ada.Strings.Unbounded.To_String (Result));
    end Escape;
 
+   overriding procedure Processing_Instruction
+    (Self    : in out Writer;
+     Target  : League.Strings.Universal_String;
+     Data    : League.Strings.Universal_String;
+     Success : in out Boolean)
+   is
+      pragma Unreferenced (Success);
+   begin
+      Self.Output.Put ("<?");
+      Self.Output.Put (Target);
+      if not Data.Is_Empty then
+         Self.Output.Put (" ");
+         Self.Output.Put (Data);
+      end if;
+      Self.Output.Put ("?>");
+   end Processing_Instruction;
+
    ----------------------------
    -- Set_Output_Destination --
    ----------------------------
@@ -178,6 +237,20 @@ package body Custom_Writers is
    begin
       Self.Output := Output;
    end Set_Output_Destination;
+
+   -----------------
+   -- Start_CDATA --
+   -----------------
+
+   overriding procedure Start_CDATA
+    (Self    : in out Writer;
+     Success : in out Boolean)
+   is
+      pragma Unreferenced (Success);
+   begin
+      Self.Output.Put ("<![CDATA[");
+      Self.CDATA := True;
+   end Start_CDATA;
 
    -------------------
    -- Start_Element --

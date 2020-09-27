@@ -12,7 +12,18 @@ with Markdown.Link_Registers;
 package Markdown.Inline_Parsers is
 
    type Annotation_Kind is
-     (Soft_Line_Break, Emphasis, Strong, Link, Code_Span);
+     (Soft_Line_Break, Emphasis, Strong, Link, Code_Span,
+      Open_HTML_Tag, Close_HTML_Tag, HTML_Comment,
+      HTML_Processing_Instruction, HTML_Declaration, HTML_CDATA);
+
+   type HTML_Attribute is record
+      Name  : League.Strings.Universal_String;
+      Value : League.String_Vectors.Universal_String_Vector;
+      --  An empty vector means no value for the attribute
+   end record;
+
+   package Attr_Vectors is new Ada.Containers.Vectors
+     (Positive, HTML_Attribute);
 
    type Annotation (Kind : Annotation_Kind := Annotation_Kind'First) is record
       From : Positive;
@@ -30,6 +41,24 @@ package Markdown.Inline_Parsers is
 
          when Soft_Line_Break | Code_Span =>
             null;
+         when Open_HTML_Tag | Close_HTML_Tag =>
+            Tag  : League.Strings.Universal_String;
+
+            case Kind is
+               when Open_HTML_Tag =>
+                  Attr : Attr_Vectors.Vector;
+                  Is_Empty : Boolean;
+               when others =>
+                  null;
+            end case;
+         when HTML_Comment =>
+            HTML_Comment : League.String_Vectors.Universal_String_Vector;
+         when HTML_Processing_Instruction =>
+            HTML_PI : League.String_Vectors.Universal_String_Vector;
+         when HTML_Declaration =>
+            HTML_Decl : League.String_Vectors.Universal_String_Vector;
+         when HTML_CDATA =>
+            HTML_CDATA : League.String_Vectors.Universal_String_Vector;
       end case;
    end record;
 
@@ -92,10 +121,16 @@ private
          Index : Positive) return League.Strings.Universal_String;
       function Lines (Self  : Plain_Text'Class) return Positive;
       pragma Unreferenced (Lines);
+
       procedure Step
         (Self   : Plain_Text'Class;
          Value  : Natural;
          Cursor : in out Position);
+
+      function Join
+        (Self : Plain_Text'Class;
+         From : Position;
+         Char : Wide_Wide_Character) return League.Strings.Universal_String;
 
    private
       type Plain_Text is tagged limited record

@@ -29,6 +29,7 @@ private
    type Writer is limited new XML.SAX.Writers.SAX_Writer with record
       Output : SAX_Output_Destination_Access;
       Tag    : League.Strings.Universal_String;
+      CDATA  : Boolean := False;
    end record;
 
    overriding function Error_String
@@ -53,5 +54,24 @@ private
       Qualified_Name : League.Strings.Universal_String;
       Attributes     : XML.SAX.Attributes.SAX_Attributes;
       Success        : in out Boolean);
+
+   overriding procedure Comment
+    (Self    : in out Writer;
+     Text    : League.Strings.Universal_String;
+     Success : in out Boolean);
+
+   overriding procedure Processing_Instruction
+    (Self    : in out Writer;
+     Target  : League.Strings.Universal_String;
+     Data    : League.Strings.Universal_String;
+     Success : in out Boolean);
+
+   overriding procedure Start_CDATA
+    (Self    : in out Writer;
+     Success : in out Boolean);
+
+   overriding procedure End_CDATA
+    (Self    : in out Writer;
+     Success : in out Boolean);
 
 end Custom_Writers;
