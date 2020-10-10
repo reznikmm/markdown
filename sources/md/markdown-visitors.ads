@@ -9,6 +9,8 @@ with Markdown.Fenced_Code_Blocks;
 with Markdown.HTML_Blocks;
 with Markdown.Indented_Code_Blocks;
 with Markdown.Link_Reference_Definitions;
+with Markdown.List_Items;
+with Markdown.Lists;
 with Markdown.Paragraphs;
 with Markdown.Thematic_Breaks;
 
@@ -22,7 +24,7 @@ package Markdown.Visitors is
 
    not overriding procedure Blockquote
      (Self  : in out Visitor;
-      Value : Markdown.Blockquotes.Blockquote) is null;
+      Value : in out Markdown.Blockquotes.Blockquote) is null;
 
    not overriding procedure Fenced_Code_Block
      (Self  : in out Visitor;
@@ -40,6 +42,14 @@ package Markdown.Visitors is
      (Self  : in out Visitor;
       Value : Markdown.Link_Reference_Definitions.Link_Reference_Definition) is
         null;
+
+   not overriding procedure List_Item
+     (Self  : in out Visitor;
+      Value : in out Markdown.List_Items.List_Item) is null;
+
+   not overriding procedure List
+     (Self  : in out Visitor;
+      Value : Markdown.Lists.List) is null;
 
    not overriding procedure Paragraph
      (Self  : in out Visitor;

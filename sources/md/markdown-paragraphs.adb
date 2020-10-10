@@ -113,7 +113,7 @@ package body Markdown.Paragraphs is
    -----------
 
    overriding procedure Visit
-     (Self    : Paragraph;
+     (Self    : in out Paragraph;
       Visitor : in out Markdown.Visitors.Visitor'Class) is
    begin
       Visitor.Paragraph (Self);

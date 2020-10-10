@@ -104,7 +104,7 @@ package body Markdown.Indented_Code_Blocks is
    -----------
 
    overriding procedure Visit
-     (Self    : Indented_Code_Block;
+     (Self    : in out Indented_Code_Block;
       Visitor : in out Markdown.Visitors.Visitor'Class)
    is
    begin

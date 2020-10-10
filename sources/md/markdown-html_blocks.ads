@@ -28,7 +28,7 @@ package Markdown.HTML_Blocks is
       Ok   : in out Boolean);
 
    overriding procedure Visit
-     (Self    : HTML_Block;
+     (Self    : in out HTML_Block;
       Visitor : in out Markdown.Visitors.Visitor'Class);
 
    procedure Filter

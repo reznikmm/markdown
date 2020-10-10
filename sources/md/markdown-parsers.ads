@@ -11,6 +11,7 @@ with League.Strings;
 with League.Strings.Hash;
 with League.String_Vectors;
 
+with Markdown.Blockquotes;
 with Markdown.Blocks;
 with Markdown.Inline_Parsers;
 with Markdown.Link_Registers;
@@ -70,7 +71,7 @@ private
 
    type Parser is limited new Markdown.Link_Registers.Link_Register with record
       Links     : Link_Maps.Map;
-      Blocks    : Block_Vectors.Vector;
+      Blocks    : Markdown.Blockquotes.Blockquote;  --  a dummy root block
       Open      : Container_Vectors.Vector;
       Open_Leaf : Markdown.Blocks.Block_Access;
       Filters   : Filter_Vectors.Vector;

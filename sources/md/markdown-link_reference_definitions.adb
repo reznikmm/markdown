@@ -285,7 +285,7 @@ package body Markdown.Link_Reference_Definitions is
    -----------
 
    overriding procedure Visit
-     (Self    : Link_Reference_Definition;
+     (Self    : in out Link_Reference_Definition;
       Visitor : in out Markdown.Visitors.Visitor'Class) is
    begin
       Visitor.Link_Reference_Definition (Self);

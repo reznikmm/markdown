@@ -35,7 +35,7 @@ package Markdown.Link_Reference_Definitions is
       Ok   : in out Boolean);
 
    overriding procedure Visit
-     (Self    : Link_Reference_Definition;
+     (Self    : in out Link_Reference_Definition;
       Visitor : in out Markdown.Visitors.Visitor'Class);
 
    procedure Filter

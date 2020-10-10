@@ -24,7 +24,7 @@ package Markdown.Paragraphs is
       Ok   : in out Boolean);
 
    overriding procedure Visit
-     (Self    : Paragraph;
+     (Self    : in out Paragraph;
       Visitor : in out Markdown.Visitors.Visitor'Class);
 
    procedure Filter

@@ -208,7 +208,7 @@ package body Markdown.HTML_Blocks is
    -----------
 
    overriding procedure Visit
-     (Self    : HTML_Block;
+     (Self    : in out HTML_Block;
       Visitor : in out Markdown.Visitors.Visitor'Class) is
    begin
       Visitor.HTML_Block (Self);

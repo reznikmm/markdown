@@ -33,7 +33,7 @@ package Markdown.Blocks is
       Ok   : in out Boolean) is null;
 
    not overriding procedure Visit
-     (Self    : Block;
+     (Self    : in out Block;
       Visitor : in out Markdown.Visitors.Visitor'Class) is abstract;
 
    type Container_Block is abstract new Block with private;
@@ -52,6 +52,9 @@ package Markdown.Blocks is
      (Self  : Container_Block;
       Line  : in out Text_Line;
       Match : out Boolean) is abstract;
+
+   procedure Wrap_List_Items (Self : in out Container_Block'Class);
+   --  Create List when neede and move List_Items inside.
 
    procedure Visit_Children
      (Self    : Container_Block'Class;

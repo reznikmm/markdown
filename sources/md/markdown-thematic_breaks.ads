@@ -16,7 +16,7 @@ package Markdown.Thematic_Breaks is
      (Line : not null access Markdown.Blocks.Text_Line) return Thematic_Break;
 
    overriding procedure Visit
-     (Self    : Thematic_Break;
+     (Self    : in out Thematic_Break;
       Visitor : in out Markdown.Visitors.Visitor'Class);
 
    procedure Filter

@@ -155,7 +155,7 @@ package body Markdown.Fenced_Code_Blocks is
    -----------
 
    overriding procedure Visit
-     (Self    : Fenced_Code_Block;
+     (Self    : in out Fenced_Code_Block;
       Visitor : in out Markdown.Visitors.Visitor'Class) is
    begin
       Visitor.Fenced_Code_Block (Self);

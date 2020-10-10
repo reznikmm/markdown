@@ -21,10 +21,12 @@ with Markdown.HTML_Blocks;
 with Markdown.Indented_Code_Blocks;
 with Markdown.Inline_Parsers;
 with Markdown.Link_Reference_Definitions;
+with Markdown.List_Items;
 with Markdown.Paragraphs;
 with Markdown.Parsers;
 with Markdown.Thematic_Breaks;
 with Markdown.Visitors;
+with Markdown.Lists;
 
 procedure MD_Driver is
 
@@ -38,6 +40,7 @@ procedure MD_Driver is
    package Visitors is
       type Visitor is limited new Markdown.Visitors.Visitor with record
          Parser    : Markdown.Parsers.Parser;
+         Is_Tight  : Boolean := False;
          New_Line  : League.Strings.Universal_String;
          Namespace : League.Strings.Universal_String;
          Writer    : aliased Custom_Writers.Writer;
@@ -51,7 +54,7 @@ procedure MD_Driver is
 
       overriding procedure Blockquote
         (Self  : in out Visitor;
-         Block : Markdown.Blockquotes.Blockquote);
+         Block : in out Markdown.Blockquotes.Blockquote);
 
       overriding procedure Fenced_Code_Block
         (Self  : in out Visitor;
@@ -64,6 +67,14 @@ procedure MD_Driver is
       overriding procedure Indented_Code_Block
         (Self  : in out Visitor;
          Block : Markdown.Indented_Code_Blocks.Indented_Code_Block);
+
+      overriding procedure List
+        (Self  : in out Visitor;
+         Block : Markdown.Lists.List);
+
+      overriding procedure List_Item
+        (Self  : in out Visitor;
+         Block : in out Markdown.List_Items.List_Item);
 
       overriding procedure Paragraph
         (Self  : in out Visitor;
@@ -91,7 +102,10 @@ procedure MD_Driver is
       is
          Image : Wide_Wide_String := Block.Level'Wide_Wide_Image;
          Lines : League.String_Vectors.Universal_String_Vector;
-         Empty : XML.SAX.Attributes.SAX_Attributes;
+
+         Empty : XML.SAX.Attributes.SAX_Attributes renames
+           XML.SAX.Attributes.Empty_SAX_Attributes;
+
       begin
          Lines.Append (Block.Title);
          Image (1) := 'h';
@@ -109,9 +123,10 @@ procedure MD_Driver is
 
       overriding procedure Blockquote
         (Self  : in out Visitor;
-         Block : Markdown.Blockquotes.Blockquote)
+         Block : in out Markdown.Blockquotes.Blockquote)
       is
-         Empty : XML.SAX.Attributes.SAX_Attributes;
+         Empty : XML.SAX.Attributes.SAX_Attributes renames
+           XML.SAX.Attributes.Empty_SAX_Attributes;
       begin
          Self.Writer.Start_Element
            (Namespace_URI => Self.Namespace,
@@ -190,7 +205,9 @@ procedure MD_Driver is
          Lines : constant League.String_Vectors.Universal_String_Vector :=
            Block.Lines;
 
-         Empty : XML.SAX.Attributes.SAX_Attributes;
+         Empty : XML.SAX.Attributes.SAX_Attributes renames
+           XML.SAX.Attributes.Empty_SAX_Attributes;
+
       begin
          Self.Writer.Start_Element
            (Namespace_URI => Self.Namespace,
@@ -215,6 +232,48 @@ procedure MD_Driver is
             Local_Name    => +"pre");
       end Indented_Code_Block;
 
+      overriding procedure List
+        (Self  : in out Visitor;
+         Block : Markdown.Lists.List)
+      is
+         Empty : XML.SAX.Attributes.SAX_Attributes renames
+           XML.SAX.Attributes.Empty_SAX_Attributes;
+
+         Is_Tight : constant Boolean := Self.Is_Tight;
+
+         Name : constant League.Strings.Universal_String :=
+           (if Block.Is_Ordered then +"ol" else +"ul");
+      begin
+         Self.Is_Tight := not Block.Is_Loose;
+         Self.Writer.Start_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => Name,
+            Attributes    => Empty);
+         Block.Visit_Children (Self);
+         Self.Writer.End_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => Name);
+         Self.Is_Tight := Is_Tight;
+      end List;
+
+      overriding procedure List_Item
+        (Self  : in out Visitor;
+         Block : in out Markdown.List_Items.List_Item)
+      is
+         Empty : XML.SAX.Attributes.SAX_Attributes renames
+           XML.SAX.Attributes.Empty_SAX_Attributes;
+
+      begin
+         Self.Writer.Start_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"li",
+            Attributes    => Empty);
+         Block.Visit_Children (Self);
+         Self.Writer.End_Element
+           (Namespace_URI => Self.Namespace,
+            Local_Name    => +"li");
+      end List_Item;
+
       overriding procedure Paragraph
         (Self  : in out Visitor;
          Block : Markdown.Paragraphs.Paragraph)
@@ -226,10 +285,15 @@ procedure MD_Driver is
            Self.Parser.Parse_Inlines (Lines);
 
          Image : Wide_Wide_String := Block.Setext_Heading'Wide_Wide_Image;
-         Empty : XML.SAX.Attributes.SAX_Attributes;
+         Empty : XML.SAX.Attributes.SAX_Attributes renames
+           XML.SAX.Attributes.Empty_SAX_Attributes;
 
       begin
-         if Block.Setext_Heading = 0 then
+         if Self.Is_Tight then
+
+            Self.Write_Annotated_Text (Text);
+
+         elsif Block.Setext_Heading = 0 then
             Self.Writer.Start_Element
               (Namespace_URI => Self.Namespace,
                Local_Name    => +"p",
@@ -260,7 +324,9 @@ procedure MD_Driver is
          Value : Markdown.Thematic_Breaks.Thematic_Break)
       is
          pragma Unreferenced (Value);
-         Empty : XML.SAX.Attributes.SAX_Attributes;
+         Empty : XML.SAX.Attributes.SAX_Attributes renames
+           XML.SAX.Attributes.Empty_SAX_Attributes;
+
       begin
          Self.Writer.Start_Element
            (Namespace_URI => Self.Namespace,
@@ -448,6 +514,7 @@ begin
    Parser.Register (Markdown.Fenced_Code_Blocks.Filter'Access);
    Parser.Register (Markdown.HTML_Blocks.Filter'Access);
    Parser.Register (Markdown.Link_Reference_Definitions.Filter'Access);
+   Parser.Register (Markdown.List_Items.Filter'Access);
    Parser.Register (Markdown.Paragraphs.Filter'Access);
 
    Visitor.Writer.Set_Output_Destination (Visitor.Output'Unchecked_Access);

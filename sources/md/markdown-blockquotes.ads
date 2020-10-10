@@ -16,7 +16,7 @@ package Markdown.Blockquotes is
      (Line   : not null access Markdown.Blocks.Text_Line) return Blockquote;
 
    overriding procedure Visit
-     (Self    : Blockquote;
+     (Self    : in out Blockquote;
       Visitor : in out Markdown.Visitors.Visitor'Class);
 
    overriding procedure Consume_Continuation_Markers

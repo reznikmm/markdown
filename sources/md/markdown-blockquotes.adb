@@ -75,7 +75,7 @@ package body Markdown.Blockquotes is
    -----------
 
    overriding procedure Visit
-     (Self    : Blockquote;
+     (Self    : in out Blockquote;
       Visitor : in out Markdown.Visitors.Visitor'Class) is
    begin
       Visitor.Blockquote (Self);

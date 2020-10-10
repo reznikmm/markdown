@@ -55,7 +55,7 @@ package body Markdown.Thematic_Breaks is
    -----------
 
    overriding procedure Visit
-     (Self    : Thematic_Break;
+     (Self    : in out Thematic_Break;
       Visitor : in out Markdown.Visitors.Visitor'Class) is
    begin
       Visitor.Thematic_Break (Self);

@@ -93,7 +93,7 @@ package body Markdown.ATX_Headings is
    -----------
 
    overriding procedure Visit
-     (Self    : ATX_Heading;
+     (Self    : in out ATX_Heading;
       Visitor : in out Markdown.Visitors.Visitor'Class) is
    begin
       Visitor.ATX_Heading (Self);

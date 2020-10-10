@@ -32,7 +32,7 @@ package Markdown.Fenced_Code_Blocks is
       Ok   : in out Boolean);
 
    overriding procedure Visit
-     (Self    : Fenced_Code_Block;
+     (Self    : in out Fenced_Code_Block;
       Visitor : in out Markdown.Visitors.Visitor'Class);
 
    procedure Filter

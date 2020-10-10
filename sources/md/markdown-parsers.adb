@@ -7,6 +7,8 @@ with Ada.Tags.Generic_Dispatching_Constructor;
 with League.Regexps;
 
 with Markdown.Link_Reference_Definitions;
+with Markdown.List_Items;
+with Markdown.Lists;
 
 package body Markdown.Parsers is
 
@@ -73,13 +75,9 @@ package body Markdown.Parsers is
       procedure Close_Blocks (Open : in out Container_Vectors.Vector) is
       begin
          if Open.Is_Empty and not Self.Open.Is_Empty then
-            Self.Blocks.Append
+            Self.Blocks.Append_Child
               (Markdown.Blocks.Block_Access (Self.Open.First_Element));
          end if;
---           for J in reverse Open.Last_Index + 1 .. Self.Open.Last_Index loop
---              --  Close block
---              null;
---           end loop;
 
          Self.Open.Move (Source => Open);
       end Close_Blocks;
@@ -132,7 +130,7 @@ package body Markdown.Parsers is
 
          if New_Containers.Is_Empty then
             if Self.Open.Is_Empty then
-               Self.Blocks.Append (New_Leaf);
+               Self.Blocks.Append_Child (New_Leaf);
             else
                Self.Open.Last_Element.Append_Child (New_Leaf);
             end if;
@@ -252,15 +250,34 @@ package body Markdown.Parsers is
    ----------
 
    procedure Stop (Self : in out Parser'Class) is
-      type Link_Definition_Visitor is new Markdown.Visitors.Visitor
-        with null record;
+      type Visitor is new Markdown.Visitors.Visitor with null record;
 
       overriding procedure Link_Reference_Definition
-        (Ignore : in out Link_Definition_Visitor;
+        (Ignore : in out Visitor;
          Value  : Link_Reference_Definitions.Link_Reference_Definition);
 
+      overriding procedure Blockquote
+        (Self  : in out Visitor;
+         Value : in out Markdown.Blockquotes.Blockquote);
+
+      overriding procedure List
+        (Self  : in out Visitor;
+         Value : Markdown.Lists.List);
+
+      overriding procedure List_Item
+        (Self  : in out Visitor;
+         Value : in out Markdown.List_Items.List_Item);
+
+      overriding procedure Blockquote
+        (Self  : in out Visitor;
+         Value : in out Markdown.Blockquotes.Blockquote) is
+      begin
+         Value.Wrap_List_Items;
+         Value.Visit_Children (Self);
+      end Blockquote;
+
       overriding procedure Link_Reference_Definition
-        (Ignore : in out Link_Definition_Visitor;
+        (Ignore : in out Visitor;
          Value  : Link_Reference_Definitions.Link_Reference_Definition)
       is
          Cursor  : Link_Maps.Cursor;
@@ -272,12 +289,32 @@ package body Markdown.Parsers is
             Cursor, Success);
       end Link_Reference_Definition;
 
-      Visitor : Link_Definition_Visitor;
-   begin
-      Self.Append_Line (League.Strings.Empty_Universal_String);
-      Self.Links.Clear;
+      overriding procedure List
+        (Self  : in out Visitor;
+         Value : Markdown.Lists.List) is
+      begin
+         Value.Visit_Children (Self);
+      end List;
 
-      Self.Visit (Visitor);
+      overriding procedure List_Item
+        (Self  : in out Visitor;
+         Value : in out Markdown.List_Items.List_Item)
+      is
+      begin
+         Value.Wrap_List_Items;
+         Value.Visit_Children (Self);
+      end List_Item;
+
+      Updater : Visitor;
+   begin
+      if not Self.Open.Is_Empty then
+         Self.Blocks.Append_Child
+           (Markdown.Blocks.Block_Access (Self.Open.First_Element));
+      end if;
+
+      Self.Links.Clear;
+      Self.Blocks.Wrap_List_Items;
+      Self.Visit (Updater);
    end Stop;
 
    -----------
@@ -288,9 +325,7 @@ package body Markdown.Parsers is
      (Self    : Parser'Class;
       Visitor : in out Markdown.Visitors.Visitor'Class) is
    begin
-      for Block of Self.Blocks loop
-         Block.Visit (Visitor);
-      end loop;
+      Self.Blocks.Visit_Children (Visitor);
    end Visit;
 
 end Markdown.Parsers;

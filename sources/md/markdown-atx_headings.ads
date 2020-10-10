@@ -18,7 +18,7 @@ package Markdown.ATX_Headings is
      (Line   : not null access Markdown.Blocks.Text_Line) return ATX_Heading;
 
    overriding procedure Visit
-     (Self    : ATX_Heading;
+     (Self    : in out ATX_Heading;
       Visitor : in out Markdown.Visitors.Visitor'Class);
 
    procedure Filter
