@@ -236,19 +236,34 @@ procedure MD_Driver is
         (Self  : in out Visitor;
          Block : Markdown.Lists.List)
       is
-         Empty : XML.SAX.Attributes.SAX_Attributes renames
-           XML.SAX.Attributes.Empty_SAX_Attributes;
+         Attr : XML.SAX.Attributes.SAX_Attributes;
 
          Is_Tight : constant Boolean := Self.Is_Tight;
 
-         Name : constant League.Strings.Universal_String :=
-           (if Block.Is_Ordered then +"ol" else +"ul");
+         Name  : League.Strings.Universal_String;
       begin
+         if Block.Is_Ordered then
+            declare
+               Start : constant Wide_Wide_String :=
+                 Block.Start'Wide_Wide_Image;
+            begin
+               Name := +"ol";
+               if Start /= " 1" then
+                  Attr.Set_Value
+                    (Namespace_URI => Self.Namespace,
+                     Local_Name    => +"start",
+                     Value         => +Start (2 .. Start'Last));
+               end if;
+            end;
+         else
+            Name := +"ul";
+         end if;
+
          Self.Is_Tight := not Block.Is_Loose;
          Self.Writer.Start_Element
            (Namespace_URI => Self.Namespace,
             Local_Name    => Name,
-            Attributes    => Empty);
+            Attributes    => Attr);
          Block.Visit_Children (Self);
          Self.Writer.End_Element
            (Namespace_URI => Self.Namespace,

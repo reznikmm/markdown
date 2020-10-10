@@ -20,14 +20,23 @@ package body Markdown.Lists is
 
       overriding procedure List_Item
         (Ignore : in out Visitor;
-         Value  : in out Markdown.List_Items.List_Item) is
+         Value  : in out Markdown.List_Items.List_Item)
+      is
+         Marker : constant League.Strings.Universal_String := Value.Marker;
       begin
          Self.Is_Ordered := Value.Is_Ordered;
-         Self.Marker := Value.Marker.Tail_From (Value.Marker.Length);
+
+         if Self.Marker.Is_Empty and then Self.Is_Ordered then
+            Self.Start := Natural'Wide_Wide_Value
+              (Marker.Head_To (Marker.Length - 1).To_Wide_Wide_String);
+         end if;
+
          Self.Is_Loose := Self.Is_Loose
            or Value.Has_Blank_Line
            or Self.Ends_Blank;
+
          Self.Ends_Blank := Value.Ends_With_Blank_Line;
+         Self.Marker := Marker.Tail_From (Marker.Length);
       end List_Item;
 
       List_Item_Detector : Visitor;
@@ -81,6 +90,15 @@ package body Markdown.Lists is
    begin
       return Tail = Self.Marker;
    end Match;
+
+   -----------
+   -- Start --
+   -----------
+
+   function Start (Self : List'Class) return Natural is
+   begin
+      return Self.Start;
+   end Start;
 
    -----------
    -- Visit --

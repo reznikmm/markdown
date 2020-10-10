@@ -20,6 +20,10 @@ package Markdown.Lists is
    function Is_Ordered (Self : List'Class) return Boolean;
    --  Return True if list item has an ordered list marker.
 
+   function Start (Self : List'Class) return Natural
+     with Pre => Self.Is_Ordered;
+   --  Start number of the first list item in case of ordered list
+
    function Match
      (Self   : List'Class;
       Marker : League.Strings.Universal_String) return Boolean;
@@ -30,6 +34,7 @@ private
       Is_Loose   : Boolean := False;
       Ends_Blank : Boolean := False;
       Is_Ordered : Boolean := False;
+      Start      : Natural := 1;
       Marker     : League.Strings.Universal_String;
    end record;
 
