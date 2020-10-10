@@ -20,7 +20,7 @@ package Markdown.Blockquotes is
       Visitor : in out Markdown.Visitors.Visitor'Class);
 
    overriding procedure Consume_Continuation_Markers
-     (Self  : Blockquote;
+     (Self  : in out Blockquote;
       Line  : in out Markdown.Blocks.Text_Line;
       Match : out Boolean);
 

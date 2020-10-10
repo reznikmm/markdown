@@ -28,6 +28,7 @@ private
 
    type List is new Markdown.Blocks.Container_Block with record
       Is_Loose   : Boolean := False;
+      Ends_Blank : Boolean := False;
       Is_Ordered : Boolean := False;
       Marker     : League.Strings.Universal_String;
    end record;
@@ -44,7 +45,7 @@ private
       Visitor : in out Markdown.Visitors.Visitor'Class);
 
    overriding procedure Consume_Continuation_Markers
-     (Self  : List;
+     (Self  : in out List;
       Line  : in out Markdown.Blocks.Text_Line;
       Match : out Boolean) is null;
 

@@ -49,7 +49,7 @@ package Markdown.Blocks is
      (True);
 
    not overriding procedure Consume_Continuation_Markers
-     (Self  : Container_Block;
+     (Self  : in out Container_Block;
       Line  : in out Text_Line;
       Match : out Boolean) is abstract;
 

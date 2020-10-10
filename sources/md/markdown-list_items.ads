@@ -14,6 +14,9 @@ package Markdown.List_Items is
 
    type List_Item is new Markdown.Blocks.Container_Block with private;
 
+   function Has_Blank_Line (Self : List_Item'Class) return Boolean;
+   function Ends_With_Blank_Line (Self : List_Item'Class) return Boolean;
+
    function Is_Ordered (Self : List_Item'Class) return Boolean;
    --  Return True if list item has an ordered list marker.
 
@@ -29,8 +32,10 @@ package Markdown.List_Items is
 private
 
    type List_Item is new Markdown.Blocks.Container_Block with record
-      Marker_Width : Positive;
-      Marker       : League.Strings.Universal_String;
+      Has_Blank_Line       : Boolean := False;
+      Ends_With_Blank_Line : Boolean := False;
+      Marker_Width         : Positive;
+      Marker               : League.Strings.Universal_String;
    end record;
 
    overriding function Create
@@ -41,7 +46,7 @@ private
       Visitor : in out Markdown.Visitors.Visitor'Class);
 
    overriding procedure Consume_Continuation_Markers
-     (Self  : List_Item;
+     (Self  : in out List_Item;
       Line  : in out Markdown.Blocks.Text_Line;
       Match : out Boolean);
 

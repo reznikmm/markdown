@@ -24,6 +24,10 @@ package body Markdown.Lists is
       begin
          Self.Is_Ordered := Value.Is_Ordered;
          Self.Marker := Value.Marker.Tail_From (Value.Marker.Length);
+         Self.Is_Loose := Self.Is_Loose
+           or Value.Has_Blank_Line
+           or Self.Ends_Blank;
+         Self.Ends_Blank := Value.Ends_With_Blank_Line;
       end List_Item;
 
       List_Item_Detector : Visitor;

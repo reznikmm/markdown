@@ -31,7 +31,7 @@ package body Markdown.List_Items is
    ----------------------------------
 
    overriding procedure Consume_Continuation_Markers
-     (Self  : List_Item;
+     (Self  : in out List_Item;
       Line  : in out Markdown.Blocks.Text_Line;
       Match : out Boolean)
    is
@@ -42,7 +42,11 @@ package body Markdown.List_Items is
       if Match then
          Line.Line := Line.Line.Tail_From (Self.Marker_Width + 1);
          Line.Column := Line.Column + Self.Marker_Width;
+         Self.Has_Blank_Line := Self.Has_Blank_Line
+           or Self.Ends_With_Blank_Line;
+         Self.Ends_With_Blank_Line := False;
       elsif Line.Line.Is_Empty then
+         Self.Ends_With_Blank_Line := True;
          Match := True;
       end if;
    end Consume_Continuation_Markers;
@@ -103,6 +107,24 @@ package body Markdown.List_Items is
          end if;
       end if;
    end Filter;
+
+   --------------------
+   -- Has_Blank_Line --
+   --------------------
+
+   function Has_Blank_Line (Self : List_Item'Class) return Boolean is
+   begin
+      return Self.Has_Blank_Line;
+   end Has_Blank_Line;
+
+   --------------------------
+   -- Ends_With_Blank_Line --
+   --------------------------
+
+   function Ends_With_Blank_Line (Self : List_Item'Class) return Boolean is
+   begin
+      return Self.Ends_With_Blank_Line;
+   end Ends_With_Blank_Line;
 
    ----------------
    -- Is_Ordered --
