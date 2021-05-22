@@ -1,6 +1,8 @@
 Markdown parser in Ada
 ======================
 
+[![Copr build status](https://copr.fedorainfracloud.org/coprs/reznik/ada/package/markdown-ada/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/reznik/ada/)
+
 This is
 [Markdown](https://github.github.com/gfm/)
 parser in Ada.
