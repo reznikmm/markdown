@@ -99,7 +99,7 @@ package body Markdown.Blocks is
                Item.Visit (Checker);
 
                if Checker.Is_List_Item then
-                  if List = null or else List.Match (Checker.Marker) then
+                  if List = null or else not List.Match (Checker.Marker) then
                      List := new Markdown.Lists.List;
                      Self.Append_Child (Block_Access (List));
                      List.Append_Child (Item);

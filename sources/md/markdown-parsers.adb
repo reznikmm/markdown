@@ -121,30 +121,29 @@ package body Markdown.Parsers is
             Self.Create_Block (Line, Tag, New_Containers, New_Leaf);
             Self.Find_Block_Start (Line, Tag, Int_Para);
          end loop;
+
+         Self.Open_Leaf := New_Leaf;
          pragma Assert (Blank_Pattern.Find_Match (Line.Line).Is_Matched);
       end if;
 
-      if New_Leaf.Is_Assigned then
-         Self.Open_Leaf := New_Leaf;
-         Close_Blocks (Open);
+      Close_Blocks (Open);
 
+      if New_Leaf.Is_Assigned then
          if New_Containers.Is_Empty then
             if Self.Open.Is_Empty then
                Self.Blocks.Append_Child (New_Leaf);
             else
                Self.Open.Last_Element.Append_Child (New_Leaf);
             end if;
-         elsif not Self.Open.Is_Empty then
-            Self.Open.Last_Element.Append_Child
-              (Markdown.Blocks.Block_Access (New_Containers.First_Element));
          end if;
-
-         Self.Open.Append (New_Containers);
       end if;
 
-      if not New_Leaf.Is_Assigned then
-         Close_Blocks (Open);
+      if not Self.Open.Is_Empty and not New_Containers.Is_Empty then
+         Self.Open.Last_Element.Append_Child
+           (Markdown.Blocks.Block_Access (New_Containers.First_Element));
       end if;
+
+      Self.Open.Append (New_Containers);
    end Append_Line;
 
    ------------------

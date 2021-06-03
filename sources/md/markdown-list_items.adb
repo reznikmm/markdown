@@ -19,12 +19,17 @@ package body Markdown.List_Items is
      "^\ {0,3}(" &                        --  1
      Bullet_List_Marker & "|" &
      Ordered_List_Marker & ")" &
-     "(\ {1,4}[^\ \t\n\v\f\r]|\ {5,})";   --  2
+     "(\ {1,4}[^\ \t\n\v\f\r]|\ {5,}|\ {0,4}$)";   --  2
 
    Prefix : constant League.Regexps.Regexp_Pattern :=
      League.Regexps.Compile
        (League.Strings.To_Universal_String
           (Marker_Pattern));
+
+   function Is_Empty_Line_Suffix
+     (Suffix : League.Strings.Universal_String) return Boolean;
+   --  Return True if Line is matched with emty line marker
+   --  ^\ {0,3}(Marker)(\ {0,4}$)
 
    ----------------------------------
    -- Consume_Continuation_Markers --
@@ -70,7 +75,12 @@ package body Markdown.List_Items is
       return Result : List_Item do
          Result.Marker := Matched.Capture (1);
 
-         if Suffix.Ends_With (" ") then
+         if Is_Empty_Line_Suffix (Suffix) then
+            Line.Line.Clear;
+            Line.Column := Line.Column + Matched.Last_Index;
+            Result.Marker_Width := Matched.Last_Index (1) + 1;
+--            Result.Has_Blank_Line := True;
+         elsif Suffix.Ends_With (" ") then
             Line.Line := Line.Line.Tail_From (Matched.Last_Index (1) + 2);
             Line.Column := Line.Column + Matched.Last_Index (1);
             Result.Marker_Width := Matched.Last_Index (1) + 1;
@@ -92,14 +102,18 @@ package body Markdown.List_Items is
       CIP  : out Can_Interrupt_Paragraph)
    is
       Marker  : League.Strings.Universal_String;
+      Suffix  : League.Strings.Universal_String;
       Matched : constant League.Regexps.Regexp_Match :=
         Prefix.Find_Match (Line.Line);
    begin
       if Matched.Is_Matched then
          Marker := Matched.Capture (1);
+         Suffix := Matched.Capture (2);
          Tag := List_Item'Tag;
 
-         if Marker.Ends_With (".") or else Marker.Ends_With (")") then
+         if Is_Empty_Line_Suffix (Suffix) then
+            CIP := False;
+         elsif Marker.Ends_With (".") or else Marker.Ends_With (")") then
             CIP := Natural'Wide_Wide_Value
               (Marker.Head_To (Marker.Length - 1).To_Wide_Wide_String) = 1;
          else
@@ -125,6 +139,17 @@ package body Markdown.List_Items is
    begin
       return Self.Ends_With_Blank_Line;
    end Ends_With_Blank_Line;
+
+   --------------------------
+   -- Is_Empty_Line_Suffix --
+   --------------------------
+
+   function Is_Empty_Line_Suffix
+     (Suffix : League.Strings.Universal_String) return Boolean is
+   begin
+      return Suffix.Is_Empty
+        or else (Suffix.Length < 5 and Suffix.Ends_With (" "));
+   end Is_Empty_Line_Suffix;
 
    ----------------
    -- Is_Ordered --
