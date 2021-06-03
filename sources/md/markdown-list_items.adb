@@ -71,7 +71,7 @@ package body Markdown.List_Items is
          Result.Marker := Matched.Capture (1);
 
          if Suffix.Ends_With (" ") then
-            Line.Line := Line.Line.Tail_From (Matched.Last_Index (1) + 1);
+            Line.Line := Line.Line.Tail_From (Matched.Last_Index (1) + 2);
             Line.Column := Line.Column + Matched.Last_Index (1);
             Result.Marker_Width := Matched.Last_Index (1) + 1;
          else
