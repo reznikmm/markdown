@@ -51,9 +51,17 @@ package body Markdown.List_Items is
            or Self.Ends_With_Blank_Line;
          Self.Ends_With_Blank_Line := False;
       elsif Line.Line.Is_Empty then
-         Self.Ends_With_Blank_Line := True;
-         Match := True;
+         Match := not
+           (Self.Ends_With_Blank_Line
+             and Self.Starts_With_Blank_Line
+             and not Self.First_Line);
+
+         if Match then
+            Self.Ends_With_Blank_Line := True;
+         end if;
       end if;
+
+      Self.First_Line := False;
    end Consume_Continuation_Markers;
 
    ------------
@@ -79,7 +87,8 @@ package body Markdown.List_Items is
             Line.Line.Clear;
             Line.Column := Line.Column + Matched.Last_Index;
             Result.Marker_Width := Matched.Last_Index (1) + 1;
---            Result.Has_Blank_Line := True;
+            Result.First_Line := True;
+            Result.Starts_With_Blank_Line := True;
          elsif Suffix.Ends_With (" ") then
             Line.Line := Line.Line.Tail_From (Matched.Last_Index (1) + 2);
             Line.Column := Line.Column + Matched.Last_Index (1);

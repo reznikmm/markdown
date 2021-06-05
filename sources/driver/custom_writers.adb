@@ -108,9 +108,9 @@ package body Custom_Writers is
       use type League.Strings.Universal_String;
    begin
       if Self.Tag = Local_Name and then
-        Self.Tag.To_Wide_Wide_String not in "code" | "html" | "a" and then
-        (Self.Tag.Length = 1 or else
-           Self.Tag (2).To_Wide_Wide_Character not in '1' .. '9')
+        Self.Tag.To_Wide_Wide_String not in "code" | "html" | "a" | "li"
+        and then (Self.Tag.Length = 1 or else
+                   Self.Tag (2).To_Wide_Wide_Character not in '1' .. '9')
       then
          Self.Output.Put ("/>");
          Self.Tag.Clear;

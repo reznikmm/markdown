@@ -32,10 +32,16 @@ package Markdown.List_Items is
 private
 
    type List_Item is new Markdown.Blocks.Container_Block with record
-      Has_Blank_Line       : Boolean := False;
-      Ends_With_Blank_Line : Boolean := False;
-      Marker_Width         : Positive;
-      Marker               : League.Strings.Universal_String;
+      Starts_With_Blank_Line : Boolean := False;
+      --  Item starts with an empty line
+      Ends_With_Blank_Line   : Boolean := False;
+      --  The last known line of the item was empty
+      Has_Blank_Line         : Boolean := False;
+      --  The item has at least one empty line (excluding line with a marker)
+      First_Line             : Boolean := False;
+      --  This is true only for the line with a marker
+      Marker_Width           : Positive;
+      Marker                 : League.Strings.Universal_String;
    end record;
 
    overriding function Create
