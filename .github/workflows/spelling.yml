@@ -1,0 +1,16 @@
+name: Spell checking
+on:
+  pull_request_target:
+  push:
+  issue_comment:
+
+jobs:
+  spelling:
+    name: Spell checking
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+    - uses: check-spelling/check-spelling@v0.0.18
+      with:
+        experimental_apply_changes_via_bot: 1
